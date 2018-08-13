@@ -59,6 +59,14 @@ class Emulator {
     }
 
     fun debug(action: String) {
+        when(state.pc.toInt()) {
+            0x01AB -> log.println("TEST JUMP INSTRUCTIONS")
+            0x22A -> log.println("TEST ACCUMULATOR IMMEDIATE")
+            0x287 -> log.println("TEST CALLS AND RETURNS")
+            0x31D -> log.println("TEST \"MOV\",\"INR\",AND \"DCR\" INSTRUCTIONS")
+            0x35C -> log.println("TEST ARITHMETIC AND LOGIC INSTRUCTIONS")
+            else -> {}
+        }
         val statement = "Ops:${opCount} | Flags: ${state.flags} | ${state} | $action ${currentOp}"
         print("\r" + statement)
         log.println(statement)
