@@ -1241,7 +1241,7 @@ class EI:NoArgOpCode(0xfb) {
 class CM:WordOpCode(0xfc, true)
 class CPI:ByteOpCode(0xfe) {
     override fun execute(state: State) {
-        val result = state.a - value!!
+        val result = state.a.toUshort() - value!!.toUshort()
         setFlags(state, result)
     }
 }
