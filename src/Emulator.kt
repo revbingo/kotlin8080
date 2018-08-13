@@ -1,5 +1,6 @@
 
 import unsigned.Ubyte
+import unsigned.Ushort
 import unsigned.toUshort
 import java.io.File
 import kotlin.system.exitProcess
@@ -7,19 +8,31 @@ import kotlin.system.exitProcess
 fun Number?.hex(isWord: Boolean = false) = String.format("$%0${if(isWord) 4 else 2}X", this?.toInt()).toLowerCase()
 
 fun main(args: Array<String>) {
-    val file = File("resources/cpudiag.bin")
-    val bytes = file.readBytes()
+    val diag = true
+    if(diag) {
+        val file = File("resources/cpudiag.bin")
+        val bytes = file.readBytes()
 
-    val emulator = Emulator()
-    emulator.load(bytes, 0x100)
+        val emulator = Emulator()
+        emulator.load(bytes, 0x100)
 
-    emulator.fiddle()
-//    emulator.disassemble(0x100)
-    emulator.run()
+        emulator.fiddle()
+        emulator.run()
+    } else {
+        val file = File("resources/invaders")
+        val bytes = file.readBytes()
+
+        val emulator = Emulator()
+        emulator.load(bytes, 0x0)
+        emulator.run()
+    }
+
 }
 
 class Emulator {
     val state = State()
+
+    val debug = false
 
     var currentOp: OpCode? = null
 
@@ -50,12 +63,16 @@ class Emulator {
         currentOp = opCodeFor(nextInst.toUbyte())
         currentOp!!.consume(state.pc, state.memory)
 
-        debug("Executing")
+        if(debug) debug("Executing")
     }
 
     fun exec() {
         currentOp!!.execAndAdvance(state)
         opCount++
+
+        if(opCount % 100000 == 0) {
+            print("\rOps:$opCount")
+        }
     }
 
     fun debug(action: String) {
@@ -106,6 +123,9 @@ class Emulator {
         } while(pc < state.memory.size)
     }
 
+    fun interrupt(num: Int) {
+
+    }
 }
 
 class Flags {
@@ -157,12 +177,28 @@ class State {
     val flags = Flags()
 
     override fun toString(): String {
-        return "a:${a.hex()}\tbc:${b.toUnsignedWord(c).hex(true)}\tde:${d.toUnsignedWord(e).hex(true)}\thl:${h.toUnsignedWord(l).hex(true)}\t\tpc:${pc.hex(true)}\tsp:${sp.hex(true)}"
+        return "a:${a.hex()}\tbc:${b.toWord(c).hex(true)}\tde:${d.toWord(e).hex(true)}\thl:${h.toWord(l).hex(true)}\t\tpc:${pc.hex(true)}\tsp:${sp.hex(true)}"
     }
 
-    fun hl() = h.toUnsignedWord(l)
-    fun de() = d.toUnsignedWord(e)
-    fun bc() = b.toUnsignedWord(c)
+    fun hl() = h.toWord(l)
+    fun de() = d.toWord(e)
+    fun bc() = b.toWord(c)
+
+    fun heap() = this.memory[this.hl()]
+    fun stack() = this.memory[this.sp]
+
+    fun push(value: Ushort) {
+        this.memory[this.sp - 2] = value.lo()
+        this.memory[this.sp - 1] = value.hi()
+        this.sp -= 2
+    }
+
+    fun pop(): Ushort {
+        val loPop = this.memory[this.sp]
+        val hiPop= this.memory[this.sp + 1]
+        this.sp += 2
+        return hiPop.toWord(loPop)
+    }
 
     fun ind(value: Number, label: String) = "label:${value}"
 }
