@@ -1,8 +1,8 @@
 
 import unsigned.Ubyte
-import unsigned.Ushort
 import unsigned.toUshort
 import java.io.File
+import kotlin.system.exitProcess
 
 fun Number?.hex(isWord: Boolean = false) = String.format("$%0${if(isWord) 4 else 2}X", this?.toInt()).toLowerCase()
 
@@ -14,21 +14,8 @@ fun main(args: Array<String>) {
     emulator.load(bytes, 0x100)
 
     emulator.fiddle()
-    //disassemble(bytes)
+//    emulator.disassemble(0x100)
     emulator.run()
-}
-
-
-fun disassemble(bytes: ByteArray) {
-    var pc = Ushort(0)
-
-    do {
-        val nextByte = bytes[pc]
-        val opCode = opCodeFor(nextByte.toUbyte())
-        opCode.consume(pc, bytes)
-        println(opCode.toString())
-        pc += opCode.operandCount + 1
-    } while(pc < bytes.size)
 }
 
 class Emulator {
@@ -38,6 +25,8 @@ class Emulator {
 
     var opCount = 0
 
+    var log = File("debug.log").printWriter()
+
     fun load(bytes: ByteArray, offset: Int) {
         state.memory = ByteArray(offset) + bytes.copyOf(bytes.size + 0x4000)
     }
@@ -45,8 +34,13 @@ class Emulator {
     fun run() {
 
         while(true) {
-            loadInst()
-            exec()
+            try {
+                loadInst()
+                exec()
+            } catch(e: Exception) {
+                log.close()
+                exitProcess(99)
+            }
         }
     }
 
@@ -60,14 +54,14 @@ class Emulator {
     }
 
     fun exec() {
-        currentOp!!.execute(state)
+        currentOp!!.execAndAdvance(state)
         opCount++
-        if(currentOp !is JMP && currentOp !is CALL && currentOp !is RET) state.pc += currentOp!!.operandCount + 1
-        debug("Executed")
     }
 
     fun debug(action: String) {
-        print("\rOps:${opCount} | Flags: ${state.flags} | ${state} | $action ${currentOp}")
+        val statement = "Ops:${opCount} | Flags: ${state.flags} | ${state} | $action ${currentOp}"
+        print("\r" + statement)
+        log.println(statement)
     }
 
     fun dumpStack() {
@@ -82,6 +76,8 @@ class Emulator {
         state.memory[1] = 0
         state.memory[2] = 0x01.toByte()
 
+        state.memory[3] = 0x76
+
         state.memory[368] = 0x7
 
         state.memory[0x59c] = 0xc3.toByte()
@@ -89,6 +85,19 @@ class Emulator {
         state.memory[0x59e] = 0x05.toByte()
 
     }
+
+    fun disassemble(offset: Int) {
+        var pc = offset.toUshort()
+
+        do {
+            val nextByte = state.memory[pc]
+            val opCode = opCodeFor(nextByte.toUbyte())
+            opCode.consume(pc, state.memory)
+            println(opCode.toString())
+            pc += opCode.operandCount + 1
+        } while(pc < state.memory.size)
+    }
+
 }
 
 class Flags {
@@ -97,10 +106,9 @@ class Flags {
     var p: Boolean = false
     var cy: Boolean = false
     var ac: Boolean = false
-    var pad: Boolean = false
 
     override fun toString(): String {
-        return "${ind(z, "z")}\t${ind(s,"s")}\t${ind(p,"p")}\t${ind(cy, "cy")}\t${ind(ac, "ac")}\t${ind(pad, "pad")}"
+        return "${ind(z, "z")}\t${ind(s,"s")}\t${ind(p,"p")}\t${ind(cy, "cy")}\t${ind(ac, "ac")}"
     }
 
     fun ind(value: Boolean, letter: String) = if(value) "($letter)" else " $letter "
