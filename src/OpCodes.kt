@@ -1,8 +1,5 @@
 
-import unsigned.Ubyte
-import unsigned.Ushort
-import unsigned.toUbyte
-import unsigned.toUshort
+import unsigned.*
 import kotlin.system.exitProcess
 
 val ZERO = Ubyte(0)
@@ -405,7 +402,11 @@ class LXI_B:WordOpCode(0x01) {
     }
 }
 
-class STAX_B:NoArgOpCode(0x02)
+class STAX_B:NoArgOpCode(0x02) {
+    override fun execute(state: State) {
+        state.memory[state.bc()] = state.a
+    }
+}
 class INX_B:NoArgOpCode(0x03) {
     override fun execute(state: State) {
         val newValue = state.bc() + 1
@@ -431,10 +432,38 @@ class MVI_B:ByteOpCode(0x06) {
         state.b = value!!
     }
 }
-class RLC:NoArgOpCode(0x07)
-class DAD_B:NoArgOpCode(0x09)
-class LDAX_B:NoArgOpCode(0x0a)
-class DCX_B:NoArgOpCode(0x0b)
+class RLC:NoArgOpCode(0x07) {
+    override fun execute(state: State) {
+        val highOrder = state.a.and(0x80) != 0x0.toUbyte()
+        state.a = state.a.shl(1)
+
+        state.flags.cy = highOrder
+        if(highOrder) {
+            state.a = state.a.or(ONE)
+        }
+
+    }
+}
+class DAD_B:NoArgOpCode(0x09) {
+    override fun execute(state: State) {
+        val newVal = state.hl().toUint() + state.bc().toUint()
+        if(newVal > 0xffff) state.flags.cy = true
+        state.h = newVal.toUshort().hi()
+        state.l = newVal.toUshort().lo()
+    }
+}
+class LDAX_B:NoArgOpCode(0x0a) {
+    override fun execute(state: State) {
+        state.a = state.memory[state.bc()]
+    }
+}
+class DCX_B:NoArgOpCode(0x0b) {
+    override fun execute(state: State) {
+        val newValue = state.bc() - 1
+        state.b = newValue.hi()
+        state.c = newValue.lo()
+    }
+}
 class INR_C:NoArgOpCode(0x0c) {
     override fun execute(state: State) {
         state.c += 1
@@ -452,14 +481,29 @@ class MVI_C:ByteOpCode(0x0e) {
         state.c = value!!
     }
 }
-class RRC:NoArgOpCode(0x0f)
+class RRC:NoArgOpCode(0x0f) {
+    override fun execute(state: State) {
+        val lowOrder = state.a.and(0x1) != 0x0.toUbyte()
+        state.a = state.a.shr(1)
+
+        state.flags.cy = lowOrder
+        if(lowOrder) {
+            state.a = state.a.or(0x80)
+        }
+
+    }
+}
 class LXI_D:WordOpCode(0x11) {
     override fun execute(state: State) {
         state.d = hi!!
         state.e = lo!!
     }
 }
-class STAX_D:NoArgOpCode(0x12)
+class STAX_D:NoArgOpCode(0x12) {
+    override fun execute(state: State) {
+        state.memory[state.de()] = state.a
+    }
+}
 class INX_D:NoArgOpCode(0x13) {
     override fun execute(state: State) {
         val newValue = state.de() + 1
@@ -485,22 +529,34 @@ class MVI_D:ByteOpCode(0x16) {
         state.d = value!!
     }
 }
-class RAL:NoArgOpCode(0x17)
+class RAL:NoArgOpCode(0x17) {
+    override fun execute(state: State) {
+        val highOrder = state.a.and(0x80) != 0x0.toUbyte()
+        state.a = state.a.shl(1).or(if(state.flags.cy) ONE else ZERO)
+        state.flags.cy = highOrder
+    }
+}
 class DAD_D:NoArgOpCode(0x19) {
     override fun execute(state: State) {
-        val newVal = state.hl() + state.de()
-        state.h = newVal.hi()
-        state.l = newVal.lo()
-
+        val newVal = state.hl().toUint() + state.de().toUint()
+        if(newVal > 0xffff) state.flags.cy = true
+        state.h = newVal.toUshort().hi()
+        state.l = newVal.toUshort().lo()
     }
 }
 class LDAX_D:NoArgOpCode(0x1a) {
     override fun execute(state: State) {
-        val addr = state.d.toUnsignedWord(state.e).toInt()
-        state.a = state.memory[addr].toUbyte()
+        state.a = state.memory[state.de()].toUbyte()
     }
 }
-class DCX_D:NoArgOpCode(0x1b)
+class DCX_D:NoArgOpCode(0x1b) {
+    override fun execute(state: State) {
+        val newValue = state.de() - 1
+        state.d = newValue.hi()
+        state.e = newValue.lo()
+
+    }
+}
 class INR_E:NoArgOpCode(0x1c) {
     override fun execute(state: State) {
         state.e += 1
@@ -518,7 +574,13 @@ class MVI_E:ByteOpCode(0x1e) {
         state.e = value!!
     }
 }
-class RAR:NoArgOpCode(0x1f)
+class RAR:NoArgOpCode(0x1f) {
+    override fun execute(state: State) {
+        val lowOrder = state.a.and(0x1) != 0x0.toUbyte()
+        state.a = state.a.shr(1).or(if(state.flags.cy) 0x80.toUbyte() else ZERO)
+        state.flags.cy = lowOrder
+    }
+}
 class RIM:NoArgOpCode(0x20)
 class LXI_H:WordOpCode(0x21) {
     override fun execute(state: State) {
@@ -526,7 +588,12 @@ class LXI_H:WordOpCode(0x21) {
         state.l = lo!!
     }
 }
-class SHLD:WordOpCode(0x22)
+class SHLD:WordOpCode(0x22) {
+    override fun execute(state: State) {
+        state.memory[value!!] = state.l
+        state.memory[value!! + 1] = state.h
+    }
+}
 class INX_H:NoArgOpCode(0x23) {
     override fun execute(state: State) {
         val newValue = state.hl() + 1
@@ -553,9 +620,27 @@ class MVI_H:ByteOpCode(0x26) {
     }
 }
 class DAA:NoArgOpCode(0x27)
-class DAD_H:NoArgOpCode(0x29)
-class LHLD:WordOpCode(0x2a)
-class DCX_H:NoArgOpCode(0x2b)
+class DAD_H:NoArgOpCode(0x29) {
+    override fun execute(state: State) {
+        val newVal = state.hl().toUint() + state.hl().toUint()
+        if(newVal > 0xffff) state.flags.cy = true
+        state.h = newVal.toUshort().hi()
+        state.l = newVal.toUshort().lo()
+    }
+}
+class LHLD:WordOpCode(0x2a) {
+    override fun execute(state: State) {
+        state.h = state.memory[value!! + 1]
+        state.l = state.memory[value!!]
+    }
+}
+class DCX_H:NoArgOpCode(0x2b) {
+    override fun execute(state: State) {
+        val newValue = state.hl() - 1
+        state.h = newValue.hi()
+        state.l = newValue.lo()
+    }
+}
 class INR_L:NoArgOpCode(0x2c) {
     override fun execute(state: State) {
         state.l += 1
@@ -573,22 +658,28 @@ class MVI_L:ByteOpCode(0x2e) {
         state.l = value!!
     }
 }
-class CMA:NoArgOpCode(0x2f)
+class CMA:NoArgOpCode(0x2f) {
+    override fun execute(state: State) {
+        state.a = state.a.inv()
+    }
+}
 class SIM:NoArgOpCode(0x30)
 class LXI_SP:WordOpCode(0x31) {
     override fun execute(state: State) {
         state.sp = value!!
     }
 }
-
-
 class STA:WordOpCode(0x32) {
     override fun execute(state: State) {
         state.memory[value!!] = state.a
     }
 }
 
-class INX_SP:NoArgOpCode(0x33)
+class INX_SP:NoArgOpCode(0x33) {
+    override fun execute(state: State) {
+        state.sp += 1
+    }
+}
 class INR_M:NoArgOpCode(0x34) {
     override fun execute(state: State) {
         state.memory[state.hl()] = state.memory[state.hl()] + 1
@@ -606,14 +697,29 @@ class MVI_M:ByteOpCode(0x36) {
         state.memory[state.hl()] = value!!
     }
 }
-class STC:NoArgOpCode(0x37)
-class DAD_SP:NoArgOpCode(0x39)
+class STC:NoArgOpCode(0x37) {
+    override fun execute(state: State) {
+        state.flags.cy = true
+    }
+}
+class DAD_SP:NoArgOpCode(0x39) {
+    override fun execute(state: State) {
+        val newVal = state.hl().toUint() + state.sp.toUint()
+        if(newVal > 0xffff) state.flags.cy = true
+        state.h = newVal.toUshort().hi()
+        state.l = newVal.toUshort().lo()
+    }
+}
 class LDA:WordOpCode(0x3a) {
     override fun execute(state: State) {
         state.a = state.memory[value!!].toUbyte()
     }
 }
-class DCX_SP:NoArgOpCode(0x3b)
+class DCX_SP:NoArgOpCode(0x3b) {
+    override fun execute(state: State) {
+        state.sp -= 1
+    }
+}
 class INR_A:NoArgOpCode(0x3c) {
     override fun execute(state: State) {
         state.a += 1
@@ -631,7 +737,11 @@ class MVI_A:ByteOpCode(0x3e) {
         state.a = value!!
     }
 }
-class CMC:NoArgOpCode(0x3f)
+class CMC:NoArgOpCode(0x3f) {
+    override fun execute(state: State) {
+        state.flags.cy = !state.flags.cy
+    }
+}
 class MOV_B_B:NoArgOpCode(0x40) {
     override fun execute(state: State) {
         state.b = state.b
@@ -1333,7 +1443,13 @@ class CMP_A:NoArgOpCode(0xbf) {
 class RNZ:ReturnOpCode(0xc0) {
     override fun execute(state: State) = returnIf(!state.flags.z, state)
 }
-class POP_B:NoArgOpCode(0xc1)
+class POP_B:NoArgOpCode(0xc1) {
+    override fun execute(state: State) {
+        state.c = state.memory[state.sp]
+        state.b = state.memory[state.sp + 1]
+        state.sp += 2
+    }
+}
 class JNZ:JumpOpCode(0xc2) {
     override fun execute(state: State) = jumpIf(!state.flags.z, state)
 }
@@ -1347,7 +1463,13 @@ class CNZ:CallOpCode(0xc4) {
         callIf(!state.flags.z, state)
     }
 }
-class PUSH_B:NoArgOpCode(0xc5)
+class PUSH_B:NoArgOpCode(0xc5) {
+    override fun execute(state: State) {
+        state.memory[state.sp - 2] = state.c
+        state.memory[state.sp - 1] = state.b
+        state.sp -= 2
+    }
+}
 class ADI:ByteOpCode(0xc6) {
     override fun execute(state: State) {
         state.a = addA(state, value!!)
@@ -1376,7 +1498,7 @@ class CALL:CallOpCode(0xcd) {
                 offset += 3
                 do {
                     val string = state.memory[offset++]
-                    print(string.toChar())
+                    println(string.toChar())
                 } while(string.toChar() != '$')
                 state.pc = 0x03.toUshort()
             } else if(state.c == Ubyte(2)) {
@@ -1397,7 +1519,13 @@ class RST_1:NoArgOpCode(0xcf, true)
 class RNC:ReturnOpCode(0xd0) {
     override fun execute(state: State) = returnIf(!state.flags.cy, state)
 }
-class POP_D:NoArgOpCode(0xd1)
+class POP_D:NoArgOpCode(0xd1) {
+    override fun execute(state: State) {
+        state.e = state.memory[state.sp]
+        state.d = state.memory[state.sp + 1]
+        state.sp += 2
+    }
+}
 class JNC:JumpOpCode(0xd2) {
     override fun execute(state: State) = jumpIf(!state.flags.cy, state)
 }
@@ -1445,18 +1573,40 @@ class RPO:ReturnOpCode(0xe0) {
     override fun execute(state: State) = returnIf(!state.flags.p, state)
 
 }
-class POP_H:NoArgOpCode(0xe1)
+class POP_H:NoArgOpCode(0xe1) {
+    override fun execute(state: State) {
+        state.l = state.memory[state.sp]
+        state.h = state.memory[state.sp + 1]
+        state.sp += 2
+    }
+}
 class JPO:JumpOpCode(0xe2) {
     override fun execute(state: State) = jumpIf(!state.flags.p, state)
 }
 
-class XTHL:NoArgOpCode(0xe3)
+class XTHL:NoArgOpCode(0xe3) {
+    override fun execute(state: State) {
+        val tmpLo = state.l
+        state.l = state.memory[state.sp]
+        state.memory[state.sp] = tmpLo
+
+        val tmpHi = state.h
+        state.h = state.memory[state.sp + 1]
+        state.memory[state.sp + 1] = tmpHi
+    }
+}
 class CPO:CallOpCode(0xe4) {
     override fun execute(state: State) {
         callIf(!state.flags.p, state)
     }
 }
-class PUSH_H:NoArgOpCode(0xe5)
+class PUSH_H:NoArgOpCode(0xe5) {
+    override fun execute(state: State) {
+        state.memory[state.sp - 2] = state.l
+        state.memory[state.sp - 1] = state.h
+        state.sp -= 2
+    }
+}
 class ANI:ByteOpCode(0xe6) {
     override fun execute(state: State) {
         state.a = state.a.and(value!!)
@@ -1467,7 +1617,11 @@ class RST_4:NoArgOpCode(0xe7, true)
 class RPE:ReturnOpCode(0xe8) {
     override fun execute(state: State) = returnIf(state.flags.p, state)
 }
-class PCHL:NoArgOpCode(0xe9)
+class PCHL:NoArgOpCode(0xe9, true) {
+    override fun execute(state: State) {
+        state.pc = state.hl()
+    }
+}
 
 class JPE:JumpOpCode(0xea) {
     override fun execute(state: State) = jumpIf(state.flags.p, state)
@@ -1496,7 +1650,12 @@ class RST_5:NoArgOpCode(0xef, true)
 class RP:ReturnOpCode(0xf0) {
     override fun execute(state: State) = returnIf(!state.flags.s, state)
 }
-class POP_PSW:NoArgOpCode(0xf1)
+class POP_PSW:NoArgOpCode(0xf1) {
+    override fun execute(state: State) {
+        state.flags.fromByte(state.memory[state.sp])
+        state.sp += 2
+    }
+}
 class JP:JumpOpCode(0xf2) {
     override fun execute(state: State) = jumpIf(!state.flags.s, state)
 }
@@ -1504,7 +1663,13 @@ class DI:NoArgOpCode(0xf3)
 class CP:CallOpCode(0xf4) {
     override fun execute(state: State) = callIf(!state.flags.s, state)
 }
-class PUSH_PSW:NoArgOpCode(0xf5)
+class PUSH_PSW:NoArgOpCode(0xf5) {
+    override fun execute(state: State) {
+        state.memory[state.sp - 2] = state.flags.asByte()
+        state.memory[state.sp - 1] = state.a
+        state.sp -= 2
+    }
+}
 class ORI:ByteOpCode(0xf6) {
     override fun execute(state: State) {
         state.a = state.a.or(value!!)
@@ -1515,7 +1680,12 @@ class RST_6:NoArgOpCode(0xf7, true)
 class RM:ReturnOpCode(0xf8) {
     override fun execute(state: State) = returnIf(state.flags.s, state)
 }
-class SPHL:NoArgOpCode(0xf9)
+class SPHL:NoArgOpCode(0xf9) {
+    override fun execute(state: State) {
+        state.sp = state.hl()
+    }
+}
+
 class JM:JumpOpCode(0xfa) {
     override fun execute(state: State) = jumpIf(state.flags.s, state)
 }

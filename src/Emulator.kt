@@ -120,6 +120,24 @@ class Flags {
     }
 
     fun ind(value: Boolean, letter: String) = if(value) "($letter)" else " $letter "
+
+    fun asByte(): Ubyte {
+        var byte = Ubyte(0)
+        if(z) byte = byte.or(0x1)
+        if(s) byte = byte.or(0x2)
+        if(p) byte = byte.or(0x4)
+        if(cy) byte = byte.or(0x8)
+        if(ac) byte = byte.or(0x10)
+        return byte
+    }
+
+    fun fromByte(flags: Ubyte) {
+        z = flags.and(0x1) != ZERO
+        s = flags.and(0x2) != ZERO
+        p = flags.and(0x4) != ZERO
+        cy = flags.and(0x8) != ZERO
+        ac = flags.and(0x10) != ZERO
+    }
 }
 
 class State {
