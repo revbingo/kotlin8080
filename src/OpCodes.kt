@@ -10,8 +10,8 @@ fun Number.toWord(loByte: Number) = this.toUshort().and(0xff).shl(8).or(loByte.t
 fun Ushort.hi() = this.and(0xff00).shr(8).toUbyte()
 fun Ushort.lo() = this.and(0xff).toUbyte()
 
-operator fun ByteArray.get(addr: Ushort) = this.get(addr.toInt()).toUbyte()
-operator fun ByteArray.set(addr: Ushort, value: Ubyte) = this.set(addr.toInt(), value.toByte()) //.also { println("set memory ${addr.toInt().hex(true)} to ${value.hex()}")}.also { Exception().printStackTrace() }
+operator fun Array<Ubyte>.get(addr: Ushort) = this.get(addr.toInt()).toUbyte()
+operator fun Array<Ubyte>.set(addr: Ushort, value: Ubyte) = this.set(addr.toInt(), value) //.also { println("set memory ${addr.toInt().hex(true)} to ${value.hex()}")}.also { Exception().printStackTrace() }
 
 fun opCodeFor(opCode: Ubyte): OpCode {
     return when(opCode.toInt()) {
@@ -272,20 +272,23 @@ abstract class OpCode(val opCode: Int, val operandCount: Int = 0, val noAdvance:
         return "${String.format("%04X", offset.toInt())}\t${this.represent()}"
     }
 
-    fun consume(pc: Ushort, bytes: ByteArray) {
+    fun consume(pc: Ushort, bytes: Array<Ubyte>) {
         offset = pc
         consumeInternal(bytes.sliceArray((pc+1).toInt()..(pc+this.operandCount).toInt()))
     }
 
-    open fun consumeInternal(bytes: ByteArray) {}
+    open fun consumeInternal(bytes: Array<Ubyte>) {}
     abstract fun represent(): String
 
-    fun execAndAdvance(state:State) {
-        execute(state)
-        if(!noAdvance) state.pc += this.operandCount + 1
+    fun execAndAdvance(state:State): Int {
+        val cycles = execute(state)
+        if(!noAdvance) {
+            state.pc += this.operandCount + 1
+        }
+        return cycles
     }
 
-    open fun execute(state: State) {
+    open fun execute(state: State): Int {
         throw RuntimeException("Unimplemented instruction ${this.javaClass.simpleName}")
     }
 
@@ -334,7 +337,7 @@ abstract class ByteOpCode(opCode: Int, noAdvance: Boolean = false): OpCode(opCod
     var value: Ubyte? = null
     override fun represent(): String = "${this.javaClass.simpleName.replaceFirst("_", "\t")}${if(this.javaClass.simpleName.contains("_")) "," else "\t"}#${value.hex()}"
 
-    override fun consumeInternal(bytes: ByteArray) {
+    override fun consumeInternal(bytes: Array<Ubyte>) {
         value = bytes[0].toUbyte()
     }
 }
@@ -346,7 +349,7 @@ abstract class WordOpCode(opCode: Int, noAdvance: Boolean = false): OpCode(opCod
 
     override fun represent(): String = "${this.javaClass.simpleName.replaceFirst("_", "\t")}${if(this.javaClass.simpleName.contains("_")) "," else "\t"}#${value.hex(isWord = true)}"
 
-    override fun consumeInternal(bytes: ByteArray) {
+    override fun consumeInternal(bytes: Array<Ubyte>) {
         value = bytes[1].toWord(bytes[0])
         hi = bytes[1].toUbyte()
         lo = bytes[0].toUbyte()
@@ -355,12 +358,15 @@ abstract class WordOpCode(opCode: Int, noAdvance: Boolean = false): OpCode(opCod
 
 // *** JUMPS ***
 abstract class JumpOpCode(opCode: Int): WordOpCode(opCode, true) {
-    fun jumpIf(condition: Boolean, state: State) {
+    val cycles: Int = 10
+
+    fun jumpIf(condition: Boolean, state: State): Int {
         if(condition) {
             state.pc = value!!
         } else {
             state.pc += this.operandCount + 1
         }
+        return cycles
     }
 }
 
@@ -395,16 +401,20 @@ class JNZ:JumpOpCode(0xc2) {
 // **** CALLS
 
 abstract class CallOpCode(opCode: Int): WordOpCode(opCode, true) {
-    fun callIf(condition: Boolean, state: State) {
-        if(condition) {
+    val ACTION_CYCLES: Int = 17
+    val NO_ACTION_CYCLES: Int = 11
+    fun callIf(condition: Boolean, state: State): Int {
+        return if(condition) {
             state.pc += 3
             state.memory[state.sp - 1] = state.pc.hi()
             state.memory[state.sp - 2] = state.pc.lo()
             state.sp -= 2
 
             state.pc = value!!
+            ACTION_CYCLES
         } else {
             state.pc += this.operandCount + 1
+            NO_ACTION_CYCLES
         }
     }
 }
@@ -433,7 +443,7 @@ class CNZ:CallOpCode(0xc4) {
     override fun execute(state: State) = callIf(!state.flags.z, state)
 }
 class CALL:CallOpCode(0xcd) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         //special diag code
         if(value!! == Ushort(5)) {
             if(state.c == Ubyte(9)) {
@@ -447,20 +457,25 @@ class CALL:CallOpCode(0xcd) {
             } else if(state.c == Ubyte(2)) {
                 exitProcess(0)
             }
+            return 0
         } else {
-            callIf(true, state)
+            return callIf(true, state)
         }
     }
 }
 
 // *** RETURNS
 abstract class ReturnOpCode(opCode:Int):NoArgOpCode(opCode, true) {
-    fun returnIf(condition: Boolean, state: State) {
-        if(condition) {
-            state.pc = state.memory[state.sp + 1].toUbyte().toWord(state.memory[state.sp].toUbyte())
+    val ACTION_CYCLES: Int = 11
+    val NO_ACTION_CYCLES: Int = 5
+    fun returnIf(condition: Boolean, state: State): Int {
+        return if(condition) {
+            state.pc = state.memory[state.sp + 1].toWord(state.memory[state.sp])
             state.sp += 2
+            ACTION_CYCLES
         } else {
             state.pc += this.operandCount + 1
+            NO_ACTION_CYCLES
         }
     }
 }
@@ -496,59 +511,78 @@ class RET:ReturnOpCode(0xc9) {
 abstract class StackOpCode(opCode: Int): NoArgOpCode(opCode)
 
 class POP_B:StackOpCode(0xc1) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         val popped = state.pop()
         state.c = popped.lo()
         state.b = popped.hi()
+        return 10
     }
 }
 class PUSH_B:StackOpCode(0xc5) {
-    override fun execute(state: State) = state.push(state.bc())
+    override fun execute(state: State): Int {
+        state.push(state.bc())
+        return 11
+    }
 }
 class POP_D:StackOpCode(0xd1) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         val popped = state.pop()
         state.e = popped.lo()
         state.d = popped.hi()
+        return 10
     }
 }
 
 class PUSH_D:StackOpCode(0xd5) {
-    override fun execute(state: State) = state.push(state.de())
+    override fun execute(state: State): Int {
+        state.push(state.de())
+        return 11
+    }
 }
 class POP_H:StackOpCode(0xe1) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         val popped = state.pop()
         state.l = popped.lo()
         state.h = popped.hi()
+        return 10
     }
 }
 class PUSH_H:StackOpCode(0xe5) {
-    override fun execute(state: State) = state.push(state.hl())
+    override fun execute(state: State): Int {
+        state.push(state.hl())
+        return 11
+    }
 }
 class POP_PSW:StackOpCode(0xf1) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         val popped = state.pop()
         state.flags.fromByte(popped.lo())
         state.a = popped.hi()
+        return 10
     }
 }
 class PUSH_PSW:StackOpCode(0xf5) {
-    override fun execute(state: State) = state.push(state.a.toWord(state.flags.asByte()))
+    override fun execute(state: State): Int {
+        state.push(state.a.toWord(state.flags.asByte()))
+        return 11
+    }
 }
 
 // === ACCUMULATOR OPS
 abstract class AccumulatorOpCode(opCode: Int): NoArgOpCode(opCode) {
 
-    fun setAccum(state: State, func: (Ubyte) -> Ushort) {
+    val CYCLES = 4
+    fun setAccum(state: State, func: (Ubyte) -> Ushort): Int {
         val result = func(state.a)
         setFlags(state, result)
         state.a = result.and(0xff).toUbyte()
+        return CYCLES
     }
 
-    fun withAccum(state: State, func: (Ubyte) -> Ushort) {
+    fun withAccum(state: State, func: (Ubyte) -> Ushort): Int {
         val result = func(state.a)
         setFlags(state, result)
+        return CYCLES
     }
 
     fun withCarry(state: State, byte: Ubyte): Ubyte = byte + if(state.flags.cy) 0x1 else 0x0
@@ -572,7 +606,10 @@ class ADD_L:AccumulatorOpCode(0x85) {
     override fun execute(state: State) = setAccum(state) { it.toUshort() + state.l.toUshort() }
 }
 class ADD_M:AccumulatorOpCode(0x86) {
-    override fun execute(state: State) = setAccum(state) { it.toUshort() + state.heap().toUshort() }
+    override fun execute(state: State): Int {
+        setAccum(state) { it.toUshort() + state.heap().toUshort() }
+        return 7
+    }
 }
 class ADD_A:AccumulatorOpCode(0x87) {
     override fun execute(state: State) = setAccum(state) { it.toUshort() + state.a.toUshort() }
@@ -596,7 +633,10 @@ class ADC_L:AccumulatorOpCode(0x8d) {
     override fun execute(state: State) = setAccum(state) { it.toUshort() + (withCarry(state, state.l)).toUshort()}
 }
 class ADC_M:AccumulatorOpCode(0x8e) {
-    override fun execute(state: State) = setAccum(state) { it.toUshort() + (withCarry(state, state.heap())).toUshort()}
+    override fun execute(state: State): Int {
+        setAccum(state) { it.toUshort() + (withCarry(state, state.heap())).toUshort()}
+        return 7
+    }
 }
 class ADC_A:AccumulatorOpCode(0x8f) {
     override fun execute(state: State) = setAccum(state) { it.toUshort() + (withCarry(state, state.a)).toUshort()}
@@ -620,7 +660,10 @@ class SUB_L:AccumulatorOpCode(0x95) {
     override fun execute(state: State) = setAccum(state) { it.toUshort() - state.l.toUshort() }
 }
 class SUB_M:AccumulatorOpCode(0x96) {
-    override fun execute(state: State) = setAccum(state) { it.toUshort() - state.heap().toUshort() }
+    override fun execute(state: State): Int {
+        setAccum(state) { it.toUshort() - state.heap().toUshort() }
+        return 7
+    }
 }
 class SUB_A:AccumulatorOpCode(0x97) {
     override fun execute(state: State) = setAccum(state) { it.toUshort() - state.a.toUshort() }
@@ -644,7 +687,10 @@ class SBB_L:AccumulatorOpCode(0x9d) {
     override fun execute(state: State) = setAccum(state) { it.toUshort() - (withCarry(state, state.l)).toUshort()}
 }
 class SBB_M:AccumulatorOpCode(0x9e) {
-    override fun execute(state: State) = setAccum(state) { it.toUshort() - (withCarry(state, state.heap())).toUshort()}
+    override fun execute(state: State): Int {
+        setAccum(state) { it.toUshort() - (withCarry(state, state.heap())).toUshort()}
+        return 7
+    }
 }
 class SBB_A:AccumulatorOpCode(0x9f) {
     override fun execute(state: State) = setAccum(state) { it.toUshort() - (withCarry(state, state.a)).toUshort()}
@@ -669,7 +715,10 @@ class ANA_L:AccumulatorOpCode(0xa5) {
     override fun execute(state: State) = setAccum(state) { it.and(state.l).toUshort() }
 }
 class ANA_M:AccumulatorOpCode(0xa6) {
-    override fun execute(state: State) = setAccum(state) { it.and(state.heap()).toUshort() }
+    override fun execute(state: State): Int {
+        setAccum(state) { it.and(state.heap()).toUshort() }
+        return 7
+    }
 }
 class ANA_A:AccumulatorOpCode(0xa7) {
     override fun execute(state: State) = setAccum(state) { it.and(state.a).toUshort() }
@@ -693,7 +742,10 @@ class XRA_L:AccumulatorOpCode(0xad) {
     override fun execute(state: State) = setAccum(state) { it.xor(state.l).toUshort() }
 }
 class XRA_M:AccumulatorOpCode(0xae) {
-    override fun execute(state: State) = setAccum(state) { it.xor(state.heap()).toUshort() }
+    override fun execute(state: State): Int {
+        setAccum(state) { it.xor(state.heap()).toUshort() }
+        return 7
+    }
 }
 class XRA_A:AccumulatorOpCode(0xaf) {
     override fun execute(state: State) = setAccum(state) { it.xor(state.a).toUshort() }
@@ -717,7 +769,10 @@ class ORA_L:AccumulatorOpCode(0xb5) {
     override fun execute(state: State) = setAccum(state) { it.or(state.l).toUshort() }
 }
 class ORA_M:AccumulatorOpCode(0xb6) {
-    override fun execute(state: State) = setAccum(state) { it.or(state.heap()).toUshort() }
+    override fun execute(state: State): Int {
+        setAccum(state) { it.or(state.heap()).toUshort() }
+        return 7
+    }
 }
 class ORA_A:AccumulatorOpCode(0xb7) {
     override fun execute(state: State) = setAccum(state) { it.or(state.a).toUshort() }
@@ -741,7 +796,10 @@ class CMP_L:AccumulatorOpCode(0xbd) {
     override fun execute(state: State) = withAccum(state) { it.toUshort() - state.l.toUshort() }
 }
 class CMP_M:AccumulatorOpCode(0xbe) {
-    override fun execute(state: State) = withAccum(state) { it.toUshort() - state.heap().toUshort() }
+    override fun execute(state: State): Int {
+        withAccum(state) { it.toUshort() - state.heap().toUshort() }
+        return 7
+    }
 }
 class CMP_A:AccumulatorOpCode(0xbf) {
     override fun execute(state: State) = withAccum(state) { it.toUshort() - state.a.toUshort() }
@@ -750,45 +808,51 @@ class CMP_A:AccumulatorOpCode(0xbf) {
 // ---- ======================a============================== --------
 
 class NOP:NoArgOpCode(0x00) {
-    override fun execute(state: State) {}
+    override fun execute(state: State): Int { return 4 }
 }
 class LXI_B:WordOpCode(0x01) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.b = hi!!
         state.c = lo!!
+        return 10
     }
 }
 class STAX_B:NoArgOpCode(0x02) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.memory[state.bc()] = state.a
+        return 7
     }
 }
 class INX_B:NoArgOpCode(0x03) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         val newValue = state.bc() + 1
         state.b = newValue.hi()
         state.c = newValue.lo()
+        return 5
     }
 }
 class INR_B:NoArgOpCode(0x04) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.b += 1
         setFlags(state, state.b)
+        return 5
     }
 }
 class DCR_B:NoArgOpCode(0x05) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.b = state.b - 1
         setFlags(state, state.b)
+        return 5
     }
 }
 class MVI_B:ByteOpCode(0x06) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.b = value!!
+        return 7
     }
 }
 class RLC:NoArgOpCode(0x07) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         val highOrder = state.a.and(0x80) != 0x0.toUbyte()
         state.a = state.a.shl(1)
 
@@ -796,48 +860,54 @@ class RLC:NoArgOpCode(0x07) {
         if(highOrder) {
             state.a = state.a.or(ONE)
         }
-
+        return 4
     }
 }
 class DAD_B:NoArgOpCode(0x09) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         val newVal = state.hl().toUint() + state.bc().toUint()
         if(newVal > 0xffff) state.flags.cy = true
         state.h = newVal.toUshort().hi()
         state.l = newVal.toUshort().lo()
+        return 10
     }
 }
 class LDAX_B:NoArgOpCode(0x0a) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.a = state.memory[state.bc()]
+        return 7
     }
 }
 class DCX_B:NoArgOpCode(0x0b) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         val newValue = state.bc() - 1
         state.b = newValue.hi()
         state.c = newValue.lo()
+        return 5
     }
 }
 class INR_C:NoArgOpCode(0x0c) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.c += 1
         setFlags(state, state.c)
+        return 5
     }
 }
 class DCR_C:NoArgOpCode(0x0d) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.c -= 1
         setFlags(state, state.c)
+        return 5
     }
 }
 class MVI_C:ByteOpCode(0x0e) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.c = value!!
+        return 7
     }
 }
 class RRC:NoArgOpCode(0x0f) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         val lowOrder = state.a.and(0x1) != 0x0.toUbyte()
         state.a = state.a.shr(1)
 
@@ -845,606 +915,713 @@ class RRC:NoArgOpCode(0x0f) {
         if(lowOrder) {
             state.a = state.a.or(0x80)
         }
-
+        return 4
     }
 }
 class LXI_D:WordOpCode(0x11) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.d = hi!!
         state.e = lo!!
+        return 10
     }
 }
 class STAX_D:NoArgOpCode(0x12) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.memory[state.de()] = state.a
+        return 7
     }
 }
 class INX_D:NoArgOpCode(0x13) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         val newValue = state.de() + 1
         state.d = newValue.hi()
         state.e = newValue.lo()
+        return 5
     }
 }
 class INR_D:NoArgOpCode(0x14){
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.d += 1
         setFlags(state, state.d)
+        return 5
     }
 }
 
 class DCR_D:NoArgOpCode(0x15) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.d -= 1
         setFlags(state, state.d)
+        return 5
     }
 }
 class MVI_D:ByteOpCode(0x16) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.d = value!!
+        return 7
     }
 }
 class RAL:NoArgOpCode(0x17) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         val highOrder = state.a.and(0x80) != 0x0.toUbyte()
         state.a = state.a.shl(1).or(if(state.flags.cy) ONE else ZERO)
         state.flags.cy = highOrder
+        return 4
     }
 }
 class DAD_D:NoArgOpCode(0x19) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         val newVal = state.hl().toUint() + state.de().toUint()
         if(newVal > 0xffff) state.flags.cy = true
         state.h = newVal.toUshort().hi()
         state.l = newVal.toUshort().lo()
+        return 10
     }
 }
 class LDAX_D:NoArgOpCode(0x1a) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.a = state.memory[state.de()].toUbyte()
+        return 7
     }
 }
 class DCX_D:NoArgOpCode(0x1b) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         val newValue = state.de() - 1
         state.d = newValue.hi()
         state.e = newValue.lo()
-
+        return 5
     }
 }
 class INR_E:NoArgOpCode(0x1c) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.e += 1
         setFlags(state, state.e)
+        return 5
     }
 }
 class DCR_E:NoArgOpCode(0x1d) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.e -= 1
         setFlags(state, state.e)
+        return 5
     }
 }
 class MVI_E:ByteOpCode(0x1e) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.e = value!!
+        return 7
     }
 }
 class RAR:NoArgOpCode(0x1f) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         val lowOrder = state.a.and(0x1) != 0x0.toUbyte()
         state.a = state.a.shr(1).or(if(state.flags.cy) 0x80.toUbyte() else ZERO)
         state.flags.cy = lowOrder
+        return 4
     }
 }
 
 class LXI_H:WordOpCode(0x21) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.h = hi!!
         state.l = lo!!
+        return 10
     }
 }
 class SHLD:WordOpCode(0x22) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.memory[value!!] = state.l
         state.memory[value!! + 1] = state.h
+        return 16
     }
 }
 class INX_H:NoArgOpCode(0x23) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         val newValue = state.hl() + 1
         state.h = newValue.hi()
         state.l = newValue.lo()
+        return 5
     }
 }
 
 class INR_H:NoArgOpCode(0x24) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.h += 1
         setFlags(state, state.h)
+        return 5
     }
 }
 class DCR_H:NoArgOpCode(0x25)  {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.h -= 1
         setFlags(state, state.h)
+        return 5
     }
 }
 class MVI_H:ByteOpCode(0x26) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.h = value!!
+        return 7
     }
 }
 
 class DAD_H:NoArgOpCode(0x29) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         val newVal = state.hl().toUint() + state.hl().toUint()
         if(newVal > 0xffff) state.flags.cy = true
         state.h = newVal.toUshort().hi()
         state.l = newVal.toUshort().lo()
+        return 10
     }
 }
 class LHLD:WordOpCode(0x2a) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.h = state.memory[value!! + 1]
         state.l = state.memory[value!!]
+        return 16
     }
 }
 class DCX_H:NoArgOpCode(0x2b) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         val newValue = state.hl() - 1
         state.h = newValue.hi()
         state.l = newValue.lo()
+        return 5
     }
 }
 class INR_L:NoArgOpCode(0x2c) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.l += 1
         setFlags(state, state.l)
+        return 5
     }
 }
 class DCR_L:NoArgOpCode(0x2d) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.l -= 1
         setFlags(state, state.l)
+        return 5
     }
 }
 class MVI_L:ByteOpCode(0x2e) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.l = value!!
+        return 7
     }
 }
 class CMA:NoArgOpCode(0x2f) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.a = state.a.inv()
+        return 4
     }
 }
 class LXI_SP:WordOpCode(0x31) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.sp = value!!
+        return 10
     }
 }
 class STA:WordOpCode(0x32) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.memory[value!!] = state.a
+        return 13
     }
 }
 class INX_SP:NoArgOpCode(0x33) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.sp += 1
+        return 5
     }
 }
 class INR_M:NoArgOpCode(0x34) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.memory[state.hl()] = state.memory[state.hl()] + 1
         setFlags(state, state.memory[state.hl()])
+        return 10
     }
 }
 class DCR_M:NoArgOpCode(0x35) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.memory[state.hl()] = state.memory[state.hl()] - 1
         setFlags(state, state.memory[state.hl()])
+        return 10
     }
 }
 class MVI_M:ByteOpCode(0x36) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.memory[state.hl()] = value!!
+        return 10
     }
 }
 class STC:NoArgOpCode(0x37) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.flags.cy = true
+        return 4
     }
 }
 class DAD_SP:NoArgOpCode(0x39) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         val newVal = state.hl().toUint() + state.sp.toUint()
         if(newVal > 0xffff) state.flags.cy = true
         state.h = newVal.toUshort().hi()
         state.l = newVal.toUshort().lo()
+        return 10
     }
 }
 class LDA:WordOpCode(0x3a) {
-    override fun execute(state: State) {
-        state.a = state.memory[value!!].toUbyte()
+    override fun execute(state: State): Int {
+        state.a = state.memory[value!!]
+        return 13
     }
 }
 class DCX_SP:NoArgOpCode(0x3b) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.sp -= 1
+        return 5
     }
 }
 class INR_A:NoArgOpCode(0x3c) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.a += 1
         setFlags(state, state.a)
+        return 5
     }
 }
 class DCR_A:NoArgOpCode(0x3d) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.a -= 1
         setFlags(state, state.a)
+        return 5
     }
 }
 class MVI_A:ByteOpCode(0x3e) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.a = value!!
+        return 7
     }
 }
 class CMC:NoArgOpCode(0x3f) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.flags.cy = !state.flags.cy
+        return 4
     }
 }
 class MOV_B_B:NoArgOpCode(0x40) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.b = state.b
+        return 5
     }
 }
 class MOV_B_C:NoArgOpCode(0x41) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.b = state.c
+        return 5
     }
 }
 class MOV_B_D:NoArgOpCode(0x42) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.b = state.d
+        return 5
     }
 }
 class MOV_B_E:NoArgOpCode(0x43) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.b = state.e
+        return 5
     }
 }
 class MOV_B_H:NoArgOpCode(0x44) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.b = state.h
+        return 5
     }
 }
 class MOV_B_L:NoArgOpCode(0x45) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.b = state.l
+        return 5
     }
 }
 class MOV_B_M:NoArgOpCode(0x46) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.b = state.memory[state.hl()]
+        return 7
     }
 }
 class MOV_B_A:NoArgOpCode(0x47) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.b = state.a
+        return 5
     }
 }
 class MOV_C_B:NoArgOpCode(0x48) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.c = state.b
+        return 5
     }
 }
 class MOV_C_C:NoArgOpCode(0x49) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.c = state.c
+        return 5
     }
 }
 class MOV_C_D:NoArgOpCode(0x4a) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.c = state.d
+        return 5
     }
 }
 class MOV_C_E:NoArgOpCode(0x4b) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.c = state.e
+        return 5
     }
 }
 class MOV_C_H:NoArgOpCode(0x4c) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.c = state.h
+        return 5
     }
 }
 class MOV_C_L:NoArgOpCode(0x4d) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.c = state.l
+        return 5
     }
 }
 class MOV_C_M:NoArgOpCode(0x4e) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.c = state.memory[state.hl()]
+        return 7
     }
 }
 class MOV_C_A:NoArgOpCode(0x4f) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.c = state.a
+        return 5
     }
 }
 class MOV_D_B:NoArgOpCode(0x50) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.d = state.b
+        return 5
     }
 }
 class MOV_D_C:NoArgOpCode(0x51) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.d = state.c
+        return 5
     }
 }
 class MOV_D_D:NoArgOpCode(0x52) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.d = state.d
+        return 5
     }
 }
 class MOV_D_E:NoArgOpCode(0x53) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.d = state.e
+        return 5
     }
 }
 class MOV_D_H:NoArgOpCode(0x54) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.d = state.h
+        return 5
     }
 }
 class MOV_D_L:NoArgOpCode(0x55) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.d = state.l
+        return 5
     }
 }
 class MOV_D_M:NoArgOpCode(0x56) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.d = state.memory[state.hl()]
+        return 7
     }
 }
 class MOV_D_A:NoArgOpCode(0x57) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.d = state.a
+        return 5
     }
 }
 class MOV_E_B:NoArgOpCode(0x58) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.e = state.b
+        return 5
     }
 }
 class MOV_E_C:NoArgOpCode(0x59) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.e = state.c
+        return 5
     }
 }
 class MOV_E_D:NoArgOpCode(0x5a) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.e = state.d
+        return 5
     }
 }
 class MOV_E_E:NoArgOpCode(0x5b) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.e = state.e
+        return 5
     }
 }
 class MOV_E_H:NoArgOpCode(0x5c) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.e = state.h
+        return 5
     }
 }
 class MOV_E_L:NoArgOpCode(0x5d) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.e = state.l
+        return 5
     }
 }
 class MOV_E_M:NoArgOpCode(0x5e) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.e = state.memory[state.hl()]
+        return 7
     }
 }
 class MOV_E_A:NoArgOpCode(0x5f) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.e = state.a
+        return 5
     }
 }
 class MOV_H_B:NoArgOpCode(0x60) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.h = state.b
+        return 5
     }
 }
 class MOV_H_C:NoArgOpCode(0x61) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.h = state.c
+        return 5
     }
 }
 class MOV_H_D:NoArgOpCode(0x62) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.h = state.d
+        return 5
     }
 }
 class MOV_H_E:NoArgOpCode(0x63) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.h = state.e
+        return 5
     }
 }
 class MOV_H_H:NoArgOpCode(0x64) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.h = state.h
+        return 5
     }
 }
 class MOV_H_L:NoArgOpCode(0x65) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.h = state.l
+        return 5
     }
 }
 class MOV_H_M:NoArgOpCode(0x66) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.h = state.memory[state.hl()]
+        return 7
     }
 }
 class MOV_H_A:NoArgOpCode(0x67) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.h = state.a
+        return 5
     }
 }
 class MOV_L_B:NoArgOpCode(0x68) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.l = state.b
+        return 5
     }
 }
 class MOV_L_C:NoArgOpCode(0x69) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.l = state.c
+        return 5
     }
 }
 class MOV_L_D:NoArgOpCode(0x6a) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.l = state.d
+        return 5
     }
 }
 class MOV_L_E:NoArgOpCode(0x6b) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.l = state.e
+        return 5
     }
 }
 class MOV_L_H:NoArgOpCode(0x6c) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.l = state.h
+        return 5
     }
 }
 class MOV_L_L:NoArgOpCode(0x6d) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.l = state.l
+        return 5
     }
 }
 class MOV_L_M:NoArgOpCode(0x6e) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.l = state.memory[state.hl()]
+        return 7
     }
 }
 class MOV_L_A:NoArgOpCode(0x6f) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.l = state.a
+        return 5
     }
 }
 class MOV_M_B:NoArgOpCode(0x70) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.memory[state.hl()] = state.b
+        return 7
     }
 }
 class MOV_M_C:NoArgOpCode(0x71) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.memory[state.hl()] = state.c
+        return 7
     }
 }
 class MOV_M_D:NoArgOpCode(0x72) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.memory[state.hl()] = state.d
+        return 7
     }
 }
 class MOV_M_E:NoArgOpCode(0x73) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.memory[state.hl()] = state.e
+        return 7
     }
 }
 class MOV_M_H:NoArgOpCode(0x74) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.memory[state.hl()] = state.h
+        return 7
     }
 }
 class MOV_M_L:NoArgOpCode(0x75) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.memory[state.hl()] = state.l
+        return 7
     }
 }
 class HLT:NoArgOpCode(0x76) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         throw RuntimeException("Halted")
     }
 }
 class MOV_M_A:NoArgOpCode(0x77) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.memory[state.hl()] = state.a
+        return 7
     }
 }
 class MOV_A_B:NoArgOpCode(0x78) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.a = state.b
+        return 5
     }
 }
 class MOV_A_C:NoArgOpCode(0x79) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.a = state.c
+        return 5
     }
 }
 class MOV_A_D:NoArgOpCode(0x7a) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.a = state.d
+        return 5
     }
 }
 class MOV_A_E:NoArgOpCode(0x7b) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.a = state.e
+        return 5
     }
 }
 class MOV_A_H:NoArgOpCode(0x7c) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.a = state.h
+        return 5
     }
 }
 class MOV_A_L:NoArgOpCode(0x7d) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.a = state.l
+        return 5
     }
 }
 class MOV_A_M:NoArgOpCode(0x7e) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.a = state.memory[state.hl()]
+        return 7
     }
 }
 class MOV_A_A:NoArgOpCode(0x7f) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.a = state.a
+        return 5
     }
 }
 
 
 class ADI:ByteOpCode(0xc6) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.a = addA(state, value!!)
+        return 7
     }
 }
 
 class ACI:ByteOpCode(0xce) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         val valAndCarry = value!! + if(state.flags.cy) ONE else ZERO
-        state.a = addA(state, valAndCarry!!)
+        state.a = addA(state, valAndCarry)
+        return 7
     }
 }
 
 class SUI:ByteOpCode(0xd6) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.a = subA(state, value!!)
+        return 7
     }
 }
 
 class SBI:ByteOpCode(0xde) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         val valAndCarry = value!! + if(state.flags.cy) 0x1 else 0x0
         state.a = subA(state, valAndCarry)
+        return 7
     }
 }
 
 class XTHL:NoArgOpCode(0xe3) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         val tmpLo = state.l
         state.l = state.memory[state.sp]
         state.memory[state.sp] = tmpLo
@@ -1452,25 +1629,28 @@ class XTHL:NoArgOpCode(0xe3) {
         val tmpHi = state.h
         state.h = state.memory[state.sp + 1]
         state.memory[state.sp + 1] = tmpHi
+        return 18
     }
 }
 
 
 class ANI:ByteOpCode(0xe6) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.a = state.a.and(value!!)
         setFlags(state, state.a)
+        return 7
     }
 }
 
 class PCHL:NoArgOpCode(0xe9, true) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.pc = state.hl()
+        return 5
     }
 }
 
 class XCHG:NoArgOpCode(0xeb) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         val tmp = state.h
         state.h = state.d
         state.d = tmp
@@ -1478,48 +1658,65 @@ class XCHG:NoArgOpCode(0xeb) {
         val tmp2 = state.l
         state.l = state.e
         state.e = tmp2
+        return 5
     }
 }
 
 class XRI:ByteOpCode(0xee) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.a = state.a.xor(value!!)
         setFlags(state, state.a)
+        return 7
     }
 }
 
 class ORI:ByteOpCode(0xf6) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.a = state.a.or(value!!)
         setFlags(state, state.a)
+        return 7
     }
 }
 
 class SPHL:NoArgOpCode(0xf9) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         state.sp = state.hl()
+        return 5
     }
 }
 
 class CPI:ByteOpCode(0xfe) {
-    override fun execute(state: State) {
+    override fun execute(state: State): Int {
         val result = state.a.toUshort() - value!!.toUshort()
         setFlags(state, result)
+        return 7
     }
 }
 
 // **** Unimplemented ***
 class DI:NoArgOpCode(0xf3) {
-    override fun execute(state: State) {}
+    override fun execute(state: State): Int {
+        state.int_enable = false
+        return 4
+    }
 }
 class EI:NoArgOpCode(0xfb) {
-    override fun execute(state: State) {}
+    override fun execute(state: State): Int {
+        state.int_enable = true
+        return 4
+    }
 }
 class OUT:ByteOpCode(0xd3) {
-    override fun execute(state: State) {}
+    override fun execute(state: State): Int {
+        state.outOp(value!!, state.a)
+        return 10
+    }
 }
 class IN:ByteOpCode(0xdb) {
-    override fun execute(state: State) {}
+    override fun execute(state: State): Int {
+        state.a = state.inOp(value!!)
+        return 10
+    }
 }
 class SIM:NoArgOpCode(0x30)
 class RIM:NoArgOpCode(0x20)
