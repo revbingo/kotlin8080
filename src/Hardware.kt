@@ -11,6 +11,7 @@ import unsigned.Ubyte
 import unsigned.toUbyte
 import java.io.File
 import kotlin.concurrent.thread
+import kotlin.system.exitProcess
 
 class ExternalShift {
     var shift0: Ubyte = ZERO
@@ -23,6 +24,8 @@ class ExternalShift {
     }
 }
 
+val CANV_X = 224.0
+val CANV_Y = 256.0
 class Hardware: Application() {
     var canvas: Canvas? = null
     var gc: GraphicsContext? = null
@@ -55,9 +58,11 @@ class Hardware: Application() {
         primaryStage.title = "Space Invaders!"
 
         val root = StackPane()
-        canvas = Canvas(512.0, 488.0)
+        canvas = Canvas(CANV_X, CANV_Y)
         root.children.add(canvas)
-        primaryStage.scene = Scene(root, 512.0, 488.0)
+        primaryStage.scene = Scene(root, CANV_X, CANV_Y)
+        primaryStage.setOnCloseRequest { exitProcess(99) }
+
         primaryStage.show()
     }
 
@@ -67,32 +72,45 @@ class Hardware: Application() {
             val gc = canvas?.graphicsContext2D ?: throw RuntimeException("Cannot get graphics context")
             gc.scale(2.0, 2.0)
             gc.fill = Color.BLACK
-            gc.fillRect(0.0,0.0,256.0,224.0)
+            gc.fillRect(0.0,0.0,CANV_X, CANV_Y)
 
             val pixelWriter = gc.pixelWriter
 
             val imageData = emulator?.state?.memory?.slice(0x2400..0x3fff) ?: throw RuntimeException("No image data to work with")
 
-            for(y in 0..223) {
-                for(x in 0..31) {
-                    val byte = imageData[(y*32) + x].toInt()
-                    for (b in 7 downTo 0) {
-                        val color = if (byte.shr(b) == 0x1) Color.WHITE else Color.BLACK
-                        if(byte != 0) {
-                            if(color == Color.WHITE) print("*") else print(".")
-                        }
-                        pixelWriter.setColor((x * 8) + (7-b), y, color)
-                    }
+            imageData.forEachIndexed { base, b ->
+                val yBlock = ((base.and(0x1f)) * 8).and(0xff).inv().and(0xff).toUbyte()
+                val x = base.shr(5)
+                for (i in 0..7) {
+                    val bt = b.shr(i).and(0x1)
+                    val y = (yBlock - i).toInt()
+                    val color = if(bt == ONE) Color.WHITE else Color.BLACK
+                    pixelWriter.setColor(x, y, color)
                 }
-                println("")
+
+                //println("Byte $base gives x,y of $x,$y")
+
             }
+//            for(y in 0..223) {
+//                for(x in 0..31) {
+//                    val byte = imageData[(y*32) + x].toInt()
+//                    for (b in 7 downTo 0) {
+//                        val color = if (byte.shr(b) == 0x1) Color.WHITE else Color.BLACK
+////                        if(byte != 0) {
+////                            if(color == Color.WHITE) print("*") else print(".")
+////                        }
+//
+//                    }
+//                }
+//                println("")
+//            }
 
 
         }
     }
 
     fun initEmulator(): Emulator8080 {
-        val diag = true
+        val diag = false
         return if(diag) {
             val file = File("resources/cpudiag.bin")
             val bytes = file.readBytes()

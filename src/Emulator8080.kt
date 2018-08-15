@@ -31,7 +31,7 @@ fun disassemble(emulator: Emulator8080, offset: Int) {
 class Emulator8080(val hardware: Hardware) {
     val state = State(hardware)
 
-    val debug: Int = 2
+    val debug: Int = 0
 
     var currentOp: OpCode? = null
 
@@ -196,9 +196,6 @@ class State(val hardware: Hardware) {
     fun heap() = this.memory[this.hl()]
 
     fun writeMem(address: Ushort, value: Ubyte) {
-        if(address.toInt() > 0x2400) {
-            print("wrote graphics mem")
-        }
         this.memory[address.toInt()] = value
     }
     fun stack() = this.memory[this.sp]
