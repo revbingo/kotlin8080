@@ -1,5 +1,4 @@
 
-import javafx.application.Application
 import unsigned.Ubyte
 import unsigned.Ushort
 import unsigned.toUshort
@@ -9,12 +8,6 @@ import kotlin.concurrent.timer
 import kotlin.system.exitProcess
 
 fun Number?.hex(isWord: Boolean = false) = String.format("$%0${if(isWord) 4 else 2}X", this?.toInt()).toLowerCase()
-
-val SIXTY_HERTZ_INTERRUPT = 16L
-
-fun main(args: Array<String>) {
-    Application.launch(Hardware::class.java, *args)
-}
 
 fun disassemble(emulator: Emulator8080, offset: Int) {
     var pc = offset.toUshort()
@@ -28,11 +21,10 @@ fun disassemble(emulator: Emulator8080, offset: Int) {
     } while(pc < emulator.state.memory.size)
 }
 
-class Emulator8080(val hardware: Hardware) {
+class Emulator8080(val hardware: Hardware, val memSize: Int) {
     val state = State(hardware)
 
     val debug: Int = 0
-
     var currentOp: OpCode? = null
 
     var opCount = 0
@@ -44,9 +36,11 @@ class Emulator8080(val hardware: Hardware) {
     var interrupt: Int = 0
 
     fun load(bytes: ByteArray, offset: Int) {
-        val ubytes = bytes.map { Ubyte(it) }
-        state.memory = Array(offset, { Ubyte(0)}) + ubytes + Array(8192, { Ubyte(0)})
-        println("Loaded with mem size " + state.memory.size)
+        state.memory = Array(memSize) { Ubyte(0) }
+
+        bytes.forEachIndexed { i, byte ->
+            state.memory[i + offset] = Ubyte(byte)
+        }
     }
 
     fun run() {
@@ -56,7 +50,7 @@ class Emulator8080(val hardware: Hardware) {
         var lastOpCount: Int = 0
         var lastInstruction : Long = 0
         var cyclesToProcess: Long = 0
-        while(true) {
+        while(!state.halted) {
             try {
                 if(cyclesToProcess > 0) {
                     if (interrupt > 0 && state.int_enable) {
@@ -65,8 +59,8 @@ class Emulator8080(val hardware: Hardware) {
                         state.pc = (8 * interrupt).toUshort()
                         interrupt = 0
                         state.int_enable = false
-                        log.print("**")
                     }
+                    if(hardware.hooks.containsKey(state.pc)) hardware.hooks[state.pc]?.invoke(state)
                     loadInst()
                     if(currentOp is IN && (currentOp as IN).value!! == ZERO) {
                         println("Waiting for IN ${(currentOp as IN).value}")
@@ -183,6 +177,7 @@ class State(val hardware: Hardware) {
     val flags = Flags()
 
     var int_enable: Boolean = false
+    var halted: Boolean = false
 
     override fun toString(): String {
         return "a:${a.hex()}\tbc:${b.toWord(c).hex(true)}\tde:${d.toWord(e).hex(true)}\thl:${h.toWord(l).hex(true)}\t\tpc:${pc.hex(true)}\tsp:${sp.hex(true)}"
@@ -218,5 +213,9 @@ class State(val hardware: Hardware) {
 
     fun outOp(port: Ubyte, value: Ubyte) {
         hardware.outOp(port, value)
+    }
+
+    fun halt() {
+        halted = true
     }
 }

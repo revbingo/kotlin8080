@@ -1,6 +1,5 @@
 
 import unsigned.*
-import kotlin.system.exitProcess
 
 val ZERO = Ubyte(0)
 val ONE = Ubyte(1)
@@ -14,7 +13,7 @@ operator fun Array<Ubyte>.get(addr: Ushort) = this.get(addr.toInt()).toUbyte()
 operator fun Array<Ubyte>.set(addr: Ushort, value: Ubyte) = this.set(addr.toInt(), value) //.also { println("set memory ${addr.toInt().hex(true)} to ${value.hex()}")}.also { Exception().printStackTrace() }
 
 val opCodes = mutableMapOf(0x00 to NOP(),
-                                         0x01 to LXI_B(),
+                                0x01 to LXI_B(),
                                 0x02 to STAX_B(),
                                 0x03 to INX_B(),
                                 0x04 to INR_B(),
@@ -440,25 +439,7 @@ class CNZ:CallOpCode(0xc4) {
     override fun execute(state: State) = callIf(!state.flags.z, state)
 }
 class CALL:CallOpCode(0xcd) {
-    override fun execute(state: State): Int {
-        //special diag code
-        if(value!! == Ushort(5)) {
-            if(state.c == Ubyte(9)) {
-                var offset = state.d.toWord(state.e)
-                offset += 3
-                do {
-                    val string = state.memory[offset++]
-                    println(string.toChar())
-                } while(string.toChar() != '$')
-                state.pc = 0x03.toUshort()
-            } else if(state.c == Ubyte(2)) {
-                exitProcess(0)
-            }
-            return 0
-        } else {
-            return callIf(true, state)
-        }
-    }
+    override fun execute(state: State) = callIf(true, state)
 }
 
 // *** RETURNS
@@ -1528,7 +1509,8 @@ class MOV_M_L:NoArgOpCode(0x75) {
 }
 class HLT:NoArgOpCode(0x76) {
     override fun execute(state: State): Int {
-        throw RuntimeException("Halted")
+        state.halt()
+        return 0
     }
 }
 class MOV_M_A:NoArgOpCode(0x77) {
@@ -1690,7 +1672,6 @@ class CPI:ByteOpCode(0xfe) {
     }
 }
 
-// **** Unimplemented ***
 class DI:NoArgOpCode(0xf3) {
     override fun execute(state: State): Int {
         state.int_enable = false
@@ -1715,6 +1696,8 @@ class IN:ByteOpCode(0xdb) {
         return 10
     }
 }
+
+// **** Unimplemented ***
 class SIM:NoArgOpCode(0x30)
 class RIM:NoArgOpCode(0x20)
 class DAA:NoArgOpCode(0x27)
@@ -1726,6 +1709,3 @@ class RST_4:NoArgOpCode(0xe7)
 class RST_5:NoArgOpCode(0xef)
 class RST_6:NoArgOpCode(0xf7)
 class RST_7:NoArgOpCode(0xff)
-class Mystery:NoArgOpCode(999) {
-    override fun represent(): String = "Unknown!"
-}
