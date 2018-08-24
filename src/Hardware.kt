@@ -87,30 +87,12 @@ class Hardware: Application() {
                     val color = if(bt == ONE) Color.WHITE else Color.BLACK
                     pixelWriter.setColor(x, y, color)
                 }
-
-                //println("Byte $base gives x,y of $x,$y")
-
             }
-//            for(y in 0..223) {
-//                for(x in 0..31) {
-//                    val byte = imageData[(y*32) + x].toInt()
-//                    for (b in 7 downTo 0) {
-//                        val color = if (byte.shr(b) == 0x1) Color.WHITE else Color.BLACK
-////                        if(byte != 0) {
-////                            if(color == Color.WHITE) print("*") else print(".")
-////                        }
-//
-//                    }
-//                }
-//                println("")
-//            }
-
-
         }
     }
 
     fun initEmulator(): Emulator8080 {
-        val diag = false
+        val diag = true
         return if(diag) {
             val file = File("resources/cpudiag.bin")
             val bytes = file.readBytes()
