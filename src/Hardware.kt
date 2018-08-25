@@ -1,7 +1,6 @@
+
 import javafx.application.Application
 import javafx.scene.Scene
-import javafx.scene.canvas.Canvas
-import javafx.scene.layout.StackPane
 import javafx.stage.Stage
 import unsigned.Ubyte
 import unsigned.Ushort
@@ -16,7 +15,6 @@ fun Int.kb() = this * 1024
 abstract class Hardware(val title: String, val fileWithOffset: Pair<String, Int>, val screenSize: Pair<Double, Double>, val memSize: Int): Application() {
 
     val emulator: Emulator8080 = Emulator8080(this, memSize)
-    val screen: Canvas = Canvas(screenSize.first, screenSize.second)
 
     val hooks = mutableMapOf<Ushort, (State) -> Unit>()
 
@@ -24,6 +22,8 @@ abstract class Hardware(val title: String, val fileWithOffset: Pair<String, Int>
     open fun interrupt(num: Int) {}
     open fun inOp(port: Ubyte): Ubyte { return ZERO }
     open fun outOp(port: Ubyte, value: Ubyte) {}
+
+    abstract fun createInterface(): Scene
 
     private fun runEmulator() {
         val file = File(fileWithOffset.first)
@@ -39,11 +39,9 @@ abstract class Hardware(val title: String, val fileWithOffset: Pair<String, Int>
         runEmulator()
         primaryStage.title = title
 
-        val root = StackPane()
-        root.children.add(screen)
-        primaryStage.scene = Scene(root, screenSize.first, screenSize.second)
         primaryStage.setOnCloseRequest { exitProcess(0) }
 
+        primaryStage.scene = createInterface()
         primaryStage.show()
     }
 }

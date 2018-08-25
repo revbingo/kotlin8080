@@ -1,6 +1,9 @@
 
 import javafx.application.Application
 import javafx.application.Platform
+import javafx.scene.Scene
+import javafx.scene.canvas.Canvas
+import javafx.scene.layout.StackPane
 import javafx.scene.paint.Color
 import unsigned.Ubyte
 import unsigned.Ushort
@@ -9,8 +12,16 @@ import unsigned.toUshort
 
 class Diagnostic: Hardware(title = "Diagnostic test",
                             fileWithOffset = "resources/cpudiag.bin" at 0x100,
-                            screenSize = 224.0 by 256.0,
+                            screenSize = 400.0 by 256.0,
                             memSize = 2.kb()) {
+
+    val screen: Canvas = Canvas(screenSize.first, screenSize.second)
+
+    override fun createInterface(): Scene {
+        val root = StackPane()
+        root.children.add(screen)
+        return Scene(root, screenSize.first, screenSize.second)
+    }
 
     override fun initEmulator() {
         //Some hackery to make the diagnostics work
@@ -41,11 +52,14 @@ class Diagnostic: Hardware(title = "Diagnostic test",
             state.pc = 0x03.toUshort()
             Platform.runLater {
                 with(screen.graphicsContext2D) {
+                    scale(2.0, 2.0)
+
                     fill = if(stringBuffer.toString().contains("OPERATIONAL")) Color.GREEN else Color.RED
                     fillRect(0.0, 0.0, screenSize.first, screenSize.second)
 
                     fill = Color.WHITE
-                    fillText(stringBuffer.toString(), 0.0, screenSize.second / 2.0)
+                    fillText(stringBuffer.toString().replace("$", ""), 0.0, screenSize.second / 4.0)
+                    save()
                 }
             }
         } else if (state.c == Ubyte(2)) {

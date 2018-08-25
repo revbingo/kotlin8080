@@ -1,6 +1,9 @@
 
 import javafx.application.Application
 import javafx.application.Platform
+import javafx.scene.Scene
+import javafx.scene.canvas.Canvas
+import javafx.scene.layout.StackPane
 import javafx.scene.paint.Color
 import unsigned.Ubyte
 import unsigned.toUbyte
@@ -36,16 +39,18 @@ class SpaceInvaders: Hardware(title = "Space Invaders!",
                                 memSize = 32.kb()) {
     private val externalShift = ExternalShift()
 
-    private var numOfPaints = 0L
-    private var totalPaintTime = 0L
+    private val screen: Canvas = Canvas(screenSize.first, screenSize.second)
 
     private var nextInterrupt = 1
     private val SIXTY_HERTZ_INTERRUPT = 8L
 
+    private var port0: Ubyte = ZERO
+    private var port1: Ubyte = ZERO
+
     override fun inOp(port: Ubyte): Ubyte {
         return when(port.toInt()) {
-            0x0 -> ZERO
-            0x1 -> ONE
+            0x0 -> port0
+            0x1 -> port1
             0x3 -> externalShift.doShift()
             else -> ZERO
         }
@@ -110,6 +115,38 @@ class SpaceInvaders: Hardware(title = "Space Invaders!",
 //            }
 //        }
     }
+
+    override fun createInterface(): Scene {
+        val root = StackPane()
+        root.children.add(screen)
+        val scene = Scene(root, screenSize.first, screenSize.second)
+
+        val keyPressBindings = mapOf(
+                "c" to this::insertCoin,
+                "1" to this::start1Player,
+                "2" to this::start2Player
+
+        )
+
+        scene.setOnKeyPressed { e ->
+            if(keyPressBindings.containsKey(e.text)) {
+                keyPressBindings[e.text]?.invoke()
+            }
+        }
+        return scene
+
+    }
+
+    private fun flipPort1(bit: Int) {
+        port1 = port1.or(bit)
+
+        Thread.sleep(50)
+
+        port1 = port1.and(bit.inv())
+    }
+    private fun insertCoin() = flipPort1(0x1)
+    private fun start1Player() = flipPort1(0x4)
+    private fun start2Player() = flipPort1(0x8)
 
 }
 

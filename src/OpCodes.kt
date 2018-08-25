@@ -1696,10 +1696,23 @@ class IN:ByteOpCode(0xdb) {
     }
 }
 
+class DAA:NoArgOpCode(0x27) {
+    override fun execute(state: State): Int {
+        if(state.a.and(0x8) > 9 || state.flags.ac) {
+            state.a += 6
+        }
+
+        if(state.a.and(0xf0).shr(4) > 9 || state.flags.cy) {
+            state.a += 0x60
+        }
+        return 4
+    }
+}
+
 // **** Unimplemented ***
 class SIM:NoArgOpCode(0x30)
 class RIM:NoArgOpCode(0x20)
-class DAA:NoArgOpCode(0x27)
+
 class RST_0:NoArgOpCode(0xc7)
 class RST_1:NoArgOpCode(0xcf)
 class RST_2:NoArgOpCode(0xd7)
