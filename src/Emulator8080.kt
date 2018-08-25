@@ -45,14 +45,14 @@ class Emulator8080(val hardware: Hardware, val memSize: Int) {
     fun run() {
         //start the interrupts
         interrupts.forEach { t -> t() }
-        var exitCode = 0;
-        var start: Long = 0
-        var lastOpCount: Int = 0
-        var lastInstruction : Long = 0
+
+        var lastInstruction: Long = 0
         var cyclesToProcess: Long = 0
+
         while(!state.halted) {
             try {
                 if(cyclesToProcess > 0) {
+                    //If there's an interrupt waiting and they are enabled, process the interrupt
                     if (interrupt > 0 && state.int_enable) {
                         hardware.interrupt(interrupt)
                         state.push(state.pc)
@@ -61,29 +61,20 @@ class Emulator8080(val hardware: Hardware, val memSize: Int) {
                         state.int_enable = false
                     }
                     if(hardware.hooks.containsKey(state.pc)) hardware.hooks[state.pc]?.invoke(state)
-                    loadInst()
-                    if(currentOp is IN && (currentOp as IN).value!! == ZERO) {
-                        println("Waiting for IN ${(currentOp as IN).value}")
-                    }
-                    val processed = exec()
+                    readNextInstruction()
+                    val processed = execNextInstruction()
                     cyclesToProcess -= processed
+                    opCount += processed
                 } else {
                     val timeNow = System.nanoTime()
-                    if(start == 0L) start = timeNow
-                    cyclesToProcess = if(lastInstruction == 0L) 4 else Math.round((timeNow - lastInstruction)/500.0)
+                    if(lastInstruction == 0L) lastInstruction = timeNow
+                    cyclesToProcess = Math.round((timeNow - lastInstruction)/500.0)
                     lastInstruction = timeNow
-
-                    if((lastInstruction - start)/1000000000.0 > 1.0) {
-                        val opCountPerSec = opCount - lastOpCount
-                        print("\rProcessed $opCountPerSec cycles in the last second")
-                        start = 0
-                        lastOpCount = opCount
-                    }
-
+                    Thread.sleep(10)
                 }
             } catch(e: Exception) {
                 e.printStackTrace(log)
-                exitCode = 99
+                e.printStackTrace()
                 break
             }
         }
@@ -95,21 +86,16 @@ class Emulator8080(val hardware: Hardware, val memSize: Int) {
         interrupts.add { timer("Interrupt", period = period, action = action) }
     }
 
-    inline fun loadInst() {
+    inline fun readNextInstruction() {
         val nextInst = state.memory[state.pc]
 
-        currentOp = opCodeFor(nextInst.toUbyte())
+        currentOp = opCodeFor(nextInst)
         currentOp!!.consume(state.pc, state.memory)
 
         if(debug >= 1) debug("Executing")
     }
 
-    inline fun exec(): Int {
-        val cyclesProcessed = currentOp!!.execAndAdvance(state)
-        opCount += cyclesProcessed
-
-        return cyclesProcessed
-    }
+    inline fun execNextInstruction(): Int = currentOp!!.execAndAdvance(state)
 
     inline fun debug(action: String) {
         when(state.pc.toInt()) {

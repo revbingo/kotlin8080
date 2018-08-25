@@ -1,5 +1,7 @@
 
 import javafx.application.Application
+import javafx.application.Platform
+import javafx.scene.paint.Color
 import unsigned.Ubyte
 import unsigned.toUbyte
 
@@ -31,10 +33,14 @@ var debugSymbols = mapOf(0x00 to "Reset",
 class SpaceInvaders: Hardware(title = "Space Invaders!",
                                 fileWithOffset = "resources/invaders" at 0x0,
                                 screenSize = 224.0 by 256.0,
-                                memSize = 16.kb()) {
+                                memSize = 32.kb()) {
     private val externalShift = ExternalShift()
 
-    private val SIXTY_HERTZ_INTERRUPT = 16L
+    private var numOfPaints = 0L
+    private var totalPaintTime = 0L
+
+    private var nextInterrupt = 1
+    private val SIXTY_HERTZ_INTERRUPT = 8L
 
     override fun inOp(port: Ubyte): Ubyte {
         return when(port.toInt()) {
@@ -56,32 +62,47 @@ class SpaceInvaders: Hardware(title = "Space Invaders!",
     }
 
     override fun interrupt(num: Int) {
+        //num == 1 means "scanline in the middle"
+        //otherwise we draw twice as fast
+        if(num == 1) return
+
         Platform.runLater {
-            val gc = screen.graphicsContext2D ?: throw RuntimeException("Cannot get graphics context")
-            gc.scale(2.0, 2.0)
+            val gc = screen.graphicsContext2D
+
+            //Black background
             gc.fill = Color.BLACK
-            gc.fillRect(0.0,0.0, screenSize.first, screenSize.second)
+            gc.fillRect(0.0, 0.0, screenSize.first, screenSize.second)
+            gc.save()
 
             val pixelWriter = gc.pixelWriter
 
-            val imageData = emulator.state.memory.slice(0x2400..0x3fff)
+            val imageData = emulator.state.memory.sliceArray(0x2400..0x3fff)
 
             imageData.forEachIndexed { base, b ->
-                val yBlock = ((base.and(0x1f)) * 8).and(0xff).inv().and(0xff).toUbyte()
-                val x = base.shr(5)
-                for (i in 0..7) {
-                    val bt = b.shr(i).and(0x1)
-                    val y = (yBlock - i).toInt()
-                    val color = if(bt == ONE) Color.WHITE else Color.BLACK
-                    pixelWriter.setColor(x, y, color)
+                //if it's zero, it's all background and we don't need to do anything
+                if(b != ZERO) {
+                    val yBlock = ((base.and(0x1f)) * 8).and(0xff).inv().and(0xff).toUbyte()
+                    val x = base.shr(5)
+                    for (j in 0..7) {
+                        val bt = b.shr(j).and(0x1)
+                        if (bt == ONE) {
+                            val y = (yBlock - j).toInt()
+                            pixelWriter.setColor(x, y, Color.WHITE)
+                        }
+
+                    }
                 }
             }
         }
     }
 
     override fun initEmulator() {
-        emulator.setInterrupt(SIXTY_HERTZ_INTERRUPT) { emulator.interrupt(2) }
-        emulator.setInterrupt(SIXTY_HERTZ_INTERRUPT) { emulator.interrupt(1) }
+        emulator.setInterrupt(SIXTY_HERTZ_INTERRUPT) {
+            emulator.interrupt(nextInterrupt)
+            nextInterrupt = if(nextInterrupt == 1) 2 else 1
+
+
+        }
 
 //        debugSymbols.forEach { addr,symbol ->
 //            hooks.put(Ushort(addr)) {
