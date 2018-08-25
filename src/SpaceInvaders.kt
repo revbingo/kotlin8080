@@ -52,12 +52,14 @@ class SpaceInvaders: Hardware(title = "Space Invaders!",
 
     private var port0: Port = Port()
     private var port1: Port = Port()
+    private var port2: Port = Port()
 
     override fun inOp(port: Ubyte): Ubyte {
 //        println("port1 is now ${port1.value}")
         return when(port.toInt()) {
             0x0 -> port0.value
             0x1 -> port1.value
+            0x2 -> port2.value
             0x3 -> externalShift.doShift()
             else -> ZERO
         }
@@ -123,9 +125,6 @@ class SpaceInvaders: Hardware(title = "Space Invaders!",
 //        }
     }
 
-    fun Int.pow(exp: Int) = this.toDouble().pow(exp).toInt()
-    infix fun Port.bit(bit: Int) = Pair(this, 2.pow(bit))
-
     override fun createInterface(): Scene {
         val root = StackPane()
         root.children.add(screen)
@@ -137,7 +136,11 @@ class SpaceInvaders: Hardware(title = "Space Invaders!",
                 "1" to start1Player,
                 "z" to player1Left,
                 "x" to player1Right,
-                "m" to player1Shot
+                "m" to player1Shot,
+                "q" to player2Left,
+                "w" to player2Right,
+                "p" to player2Shot,
+                "t" to tilt
         )
 
         scene.setOnKeyPressed { e ->
@@ -162,6 +165,16 @@ class SpaceInvaders: Hardware(title = "Space Invaders!",
     private val player1Shot = port1 bit 4
     private val player1Left = port1 bit 5
     private val player1Right = port1 bit 6
+
+    private val player2Shot = port2 bit 4
+    private val player2Left = port2 bit 5
+    private val player2Right = port2 bit 6
+
+    private val tilt = port2 bit 2
+
+    fun Int.pow(exp: Int) = this.toDouble().pow(exp).toInt()
+    infix fun Port.bit(bit: Int) = Pair(this, 2.pow(bit))
+
 }
 
 fun main(args: Array<String>) {
