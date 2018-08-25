@@ -7,6 +7,7 @@ import javafx.scene.layout.StackPane
 import javafx.scene.paint.Color
 import unsigned.Ubyte
 import unsigned.toUbyte
+import kotlin.math.pow
 
 class ExternalShift {
     var shift0: Ubyte = ZERO
@@ -33,6 +34,11 @@ var debugSymbols = mapOf(0x00 to "Reset",
         0x1d9 to "AddDelta",
         0x1e4 to "CopyRAMMirror"
 )
+
+class Port {
+    var value: Ubyte = ZERO
+}
+
 class SpaceInvaders: Hardware(title = "Space Invaders!",
                                 fileWithOffset = "resources/invaders" at 0x0,
                                 screenSize = 224.0 by 256.0,
@@ -44,13 +50,14 @@ class SpaceInvaders: Hardware(title = "Space Invaders!",
     private var nextInterrupt = 1
     private val SIXTY_HERTZ_INTERRUPT = 8L
 
-    private var port0: Ubyte = ZERO
-    private var port1: Ubyte = ZERO
+    private var port0: Port = Port()
+    private var port1: Port = Port()
 
     override fun inOp(port: Ubyte): Ubyte {
+//        println("port1 is now ${port1.value}")
         return when(port.toInt()) {
-            0x0 -> port0
-            0x1 -> port1
+            0x0 -> port0.value
+            0x1 -> port1.value
             0x3 -> externalShift.doShift()
             else -> ZERO
         }
@@ -116,38 +123,45 @@ class SpaceInvaders: Hardware(title = "Space Invaders!",
 //        }
     }
 
+    fun Int.pow(exp: Int) = this.toDouble().pow(exp).toInt()
+    infix fun Port.bit(bit: Int) = Pair(this, 2.pow(bit))
+
     override fun createInterface(): Scene {
         val root = StackPane()
         root.children.add(screen)
         val scene = Scene(root, screenSize.first, screenSize.second)
 
         val keyPressBindings = mapOf(
-                "c" to this::insertCoin,
-                "1" to this::start1Player,
-                "2" to this::start2Player
-
+                "c" to insertCoin,
+                "2" to start2Player,
+                "1" to start1Player,
+                "z" to player1Left,
+                "x" to player1Right,
+                "m" to player1Shot
         )
 
         scene.setOnKeyPressed { e ->
             if(keyPressBindings.containsKey(e.text)) {
-                keyPressBindings[e.text]?.invoke()
+                val switch = keyPressBindings[e.text]!!
+                switch.first.value = switch.first.value.or(switch.second)
+            }
+        }
+        scene.setOnKeyReleased { e ->
+            if(keyPressBindings.containsKey(e.text)) {
+                val switch = keyPressBindings[e.text]!!
+                switch.first.value = switch.first.value.and(switch.second.inv())
             }
         }
         return scene
 
     }
 
-    private fun flipPort1(bit: Int) {
-        port1 = port1.or(bit)
-
-        Thread.sleep(50)
-
-        port1 = port1.and(bit.inv())
-    }
-    private fun insertCoin() = flipPort1(0x1)
-    private fun start1Player() = flipPort1(0x4)
-    private fun start2Player() = flipPort1(0x8)
-
+    private val insertCoin = port1 bit 0
+    private val start2Player = port1 bit 1
+    private val start1Player = port1 bit 2
+    private val player1Shot = port1 bit 4
+    private val player1Left = port1 bit 5
+    private val player1Right = port1 bit 6
 }
 
 fun main(args: Array<String>) {
