@@ -1,7 +1,5 @@
 
 import javafx.application.Application
-import javafx.application.Platform
-import javafx.scene.paint.Color
 import unsigned.Ubyte
 import unsigned.toUbyte
 

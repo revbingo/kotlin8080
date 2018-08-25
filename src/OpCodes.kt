@@ -4,9 +4,9 @@ import unsigned.*
 val ZERO = Ubyte(0)
 val ONE = Ubyte(1)
 
-fun Number.toWord(loByte: Number) = this.toUshort().and(0xff).shl(8).or(loByte.toUshort().and(0xff))
+inline fun Number.toWord(loByte: Number) = this.toUshort().shl(8).or(loByte.toUshort())
 
-fun Ushort.hi() = this.and(0xff00).shr(8).toUbyte()
+fun Ushort.hi() = this.shr(8).toUbyte()
 fun Ushort.lo() = this.and(0xff).toUbyte()
 
 operator fun Array<Ubyte>.get(addr: Ushort) = this.get(addr.toInt()).toUbyte()
@@ -259,7 +259,7 @@ val opCodes = mutableMapOf(0x00 to NOP(),
                                 0xfe to CPI(),
                                 0xff to RST_7())
 
-fun opCodeFor(opCode: Ubyte): OpCode = opCodes.get(opCode.toInt())!!
+fun opCodeFor(opCode: Ubyte): OpCode = opCodes[opCode.toInt()]!!
 
 abstract class OpCode(val opCode: Int, val operandCount: Int = 0, val noAdvance: Boolean = false) {
 
@@ -288,22 +288,21 @@ abstract class OpCode(val opCode: Int, val operandCount: Int = 0, val noAdvance:
         throw RuntimeException("Unimplemented instruction ${this.javaClass.simpleName}")
     }
 
-    fun setFlags(state: State, result: Ushort) = setFlags(state, result, 16)
-    fun setFlags(state: State, result: Ubyte) = setFlags(state, result.toUshort(), 8)
-    fun setFlags(state: State, result: Ushort, size: Int) {
+    fun setFlags(state: State, result: Ubyte) = setFlags(state, result.toUshort())
+    fun setFlags(state: State, result: Ushort) {
         state.flags.z = result.and(0xff).toUbyte() == ZERO
 
         state.flags.s = result.and(0x80).toUbyte() != ZERO
 
         state.flags.cy = result > 0xff
 
-        state.flags.p = parity(result.and(0xff).toUbyte(), size)
+        state.flags.lastFlaggedValue = result.and(0xff)
     }
 
-    fun parity(result: Ubyte, size: Int): Boolean {
+    fun parity(result: Ubyte): Boolean {
         var p = 0
-        var work = result.and(1.shl(size)-1)
-        for(i in (0..size)) {
+        var work = result.and(1.shl(8)-1)
+        for(i in (0..8)) {
             if(work.and(0x1).toInt() == 0x1) p++
             work = work.shr(1)
         }
@@ -340,13 +339,13 @@ abstract class ByteOpCode(opCode: Int, noAdvance: Boolean = false): OpCode(opCod
 
 abstract class WordOpCode(opCode: Int, noAdvance: Boolean = false): OpCode(opCode, 2, noAdvance) {
     var value: Ushort? = null
+        get() = hi!!.toUshort().shl(8).or(lo!!.toUshort())
     var hi: Ubyte? = null
     var lo: Ubyte? = null
 
     override fun represent(): String = "${this.javaClass.simpleName.replaceFirst("_", "\t")}${if(this.javaClass.simpleName.contains("_")) "," else "\t"}#${value.hex(isWord = true)}"
 
     override fun consumeInternal(bytes: Array<Ubyte>) {
-        value = bytes[1].toWord(bytes[0])
         hi = bytes[1].toUbyte()
         lo = bytes[0].toUbyte()
     }

@@ -5,7 +5,6 @@ import unsigned.toUshort
 import java.io.File
 import java.util.*
 import kotlin.concurrent.timer
-import kotlin.system.exitProcess
 
 fun Number?.hex(isWord: Boolean = false) = String.format("$%0${if(isWord) 4 else 2}X", this?.toInt()).toLowerCase()
 
@@ -46,6 +45,7 @@ class Emulator8080(val hardware: Hardware, val memSize: Int) {
     fun run() {
         //start the interrupts
         interrupts.forEach { t -> t() }
+        var exitCode = 0;
         var start: Long = 0
         var lastOpCount: Int = 0
         var lastInstruction : Long = 0
@@ -83,10 +83,12 @@ class Emulator8080(val hardware: Hardware, val memSize: Int) {
                 }
             } catch(e: Exception) {
                 e.printStackTrace(log)
-                log.close()
-                exitProcess(99)
+                exitCode = 99
+                break
             }
         }
+        log.flush()
+        log.close()
     }
 
     fun setInterrupt(period: Long, action: TimerTask.() -> Unit) {
@@ -128,10 +130,28 @@ class Emulator8080(val hardware: Hardware, val memSize: Int) {
     }
 }
 
-class Flags {
+class Flags(val state: State) {
     var z: Boolean = false
     var s: Boolean = false
-    var p: Boolean = false
+
+    //we lazy evaluate this so it's only calculated when needed
+    //setFlags will just set the 'lastFlaggedValue' variable so that we know the last number that parity should have been
+    //calculated for
+    var lastFlaggedValue: Ushort = Ushort(0)
+    var p: Boolean
+        get() {
+            var p = 0
+            var work = lastFlaggedValue.and(1.shl(8)-1)
+            for(i in (0..8)) {
+                if(work.and(0x1).toInt() == 0x1) p++
+                work = work.shr(1)
+            }
+            return (0 == (p.and(0x1)))
+        }
+        //Also need a setter so that POP_PSW (sets flags from a value on the stack) can work.
+        set(value: Boolean) {
+            lastFlaggedValue = if(value) Ushort(0) else Ushort(1)
+        }
     var cy: Boolean = false
     var ac: Boolean = false
 
@@ -174,7 +194,7 @@ class State(val hardware: Hardware) {
 
     var memory = Array<Ubyte>(4000, { Ubyte(0) })
 
-    val flags = Flags()
+    val flags = Flags(this)
 
     var int_enable: Boolean = false
     var halted: Boolean = false
