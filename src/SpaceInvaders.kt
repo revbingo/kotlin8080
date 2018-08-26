@@ -3,7 +3,8 @@ import javafx.application.Application
 import javafx.application.Platform
 import javafx.scene.Scene
 import javafx.scene.canvas.Canvas
-import javafx.scene.layout.StackPane
+import javafx.scene.control.Button
+import javafx.scene.layout.BorderPane
 import javafx.scene.paint.Color
 import unsigned.Ubyte
 import unsigned.toUbyte
@@ -126,10 +127,25 @@ class SpaceInvaders: Hardware(title = "Space Invaders!",
     }
 
     override fun createInterface(): Scene {
-        val root = StackPane()
-        root.children.add(screen)
-        val scene = Scene(root, screenSize.first, screenSize.second)
+        val root = BorderPane()
+        root.center = screen
 
+        val reset = Button("Reset")
+        root.bottom = reset
+
+        reset.setOnAction {
+            emulator.state.halt()
+            emulator.reset()
+            Thread.sleep(100)
+            runEmulator()
+        }
+        val scene = Scene(root, screenSize.first, screenSize.second + 40)
+        bindKeys(scene)
+        return scene
+
+    }
+
+    private fun bindKeys(scene: Scene) {
         val keyPressBindings = mapOf(
                 "c" to insertCoin,
                 "2" to start2Player,
@@ -155,10 +171,7 @@ class SpaceInvaders: Hardware(title = "Space Invaders!",
                 switch.first.value = switch.first.value.and(switch.second.inv())
             }
         }
-        return scene
-
     }
-
     private val insertCoin = port1 bit 0
     private val start2Player = port1 bit 1
     private val start1Player = port1 bit 2

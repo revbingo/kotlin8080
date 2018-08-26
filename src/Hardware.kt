@@ -25,7 +25,8 @@ abstract class Hardware(val title: String, val fileWithOffset: Pair<String, Int>
 
     abstract fun createInterface(): Scene
 
-    private fun runEmulator() {
+    fun runEmulator() {
+        emulator.reset()
         val file = File(fileWithOffset.first)
         val bytes = file.readBytes()
         emulator.load(bytes, fileWithOffset.second)

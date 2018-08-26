@@ -21,7 +21,7 @@ fun disassemble(emulator: Emulator8080, offset: Int) {
 }
 
 class Emulator8080(val hardware: Hardware, val memSize: Int) {
-    val state = State(hardware)
+    val state = State(hardware, memSize)
 
     val debug: Int = 0
     var currentOp: OpCode? = null
@@ -35,11 +35,32 @@ class Emulator8080(val hardware: Hardware, val memSize: Int) {
     var interrupt: Int = 0
 
     fun load(bytes: ByteArray, offset: Int) {
-        state.memory = Array(memSize) { Ubyte(0) }
-
         bytes.forEachIndexed { i, byte ->
             state.memory[i + offset] = Ubyte(byte)
         }
+    }
+
+    fun reset() {
+        state.a = Ubyte(0)
+        state.b = Ubyte(0)
+        state.c = Ubyte(0)
+        state.d = Ubyte(0)
+        state.e = Ubyte(0)
+        state.h = Ubyte(0)
+        state.l = Ubyte(0)
+
+        state.pc = 0.toUshort()
+        state.sp = 0.toUshort()
+
+        state.flags.s = false
+        state.flags.z = false
+        state.flags.cy = false
+        state.flags.p = false
+
+        state.memory.fill(Ubyte(0))
+
+        state.int_enable = false
+        state.halted = false
     }
 
     fun run() {
@@ -166,7 +187,7 @@ class Flags(val state: State) {
     }
 }
 
-class State(val hardware: Hardware) {
+class State(val hardware: Hardware, memSize: Int) {
     var a: Ubyte = Ubyte(0)
     var b: Ubyte = Ubyte(0)
     var c: Ubyte = Ubyte(0)
@@ -178,7 +199,7 @@ class State(val hardware: Hardware) {
     var pc = 0.toUshort()
     var sp = 0.toUshort()
 
-    var memory = Array<Ubyte>(4000, { Ubyte(0) })
+    var memory = Array(memSize) { Ubyte(0) }
 
     val flags = Flags(this)
 
