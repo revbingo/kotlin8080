@@ -312,12 +312,18 @@ abstract class OpCode(val opCode: Int, val operandCount: Int = 0, val noAdvance:
     fun addA(state: State, byte: Ubyte): Ubyte {
         val result = state.a.toUshort() + byte.toUshort()
         setFlags(state, result)
+        val halfCarry = (1.xor(result)).xor(state.a).and(0x10)
+        state.flags.ac = (halfCarry > 0)
+        state.a = result.and(0xff).toUbyte()
         return result.and(0xff).toUbyte()
     }
 
     fun subA(state: State, byte: Ubyte): Ubyte {
         val result = state.a.toUshort() - byte.toUshort()
         setFlags(state, result)
+        val halfCarry = (1.xor(result)).xor(state.a).and(0x10)
+        state.flags.ac = (halfCarry > 0)
+        state.a = result.and(0xff).toUbyte()
         return result.and(0xff).toUbyte()
     }
 
@@ -552,6 +558,8 @@ abstract class AccumulatorOpCode(opCode: Int): NoArgOpCode(opCode) {
     fun setAccum(state: State, func: (Ubyte) -> Ushort): Int {
         val result = func(state.a)
         setFlags(state, result)
+        val halfCarry = (1.xor(result)).xor(state.a).and(0x10)
+        state.flags.ac = (halfCarry > 0)
         state.a = result.and(0xff).toUbyte()
         return CYCLES
     }
@@ -559,11 +567,14 @@ abstract class AccumulatorOpCode(opCode: Int): NoArgOpCode(opCode) {
     fun withAccum(state: State, func: (Ubyte) -> Ushort): Int {
         val result = func(state.a)
         setFlags(state, result)
+        val halfCarry = (1.xor(result)).xor(state.a).and(0x10)
+        state.flags.ac = (halfCarry > 0)
         return CYCLES
     }
 
     fun withCarry(state: State, byte: Ubyte): Ubyte = byte + if(state.flags.cy) 0x1 else 0x0
 }
+
 class ADD_B:AccumulatorOpCode(0x80) {
     override fun execute(state: State) = setAccum(state) { it.toUshort() + state.b.toUshort() }
 }
@@ -1698,7 +1709,7 @@ class IN:ByteOpCode(0xdb) {
 
 class DAA:NoArgOpCode(0x27) {
     override fun execute(state: State): Int {
-        if(state.a.and(0x8) > 9 || state.flags.ac) {
+        if(state.a.and(0xf) > 9 || state.flags.ac) {
             state.a += 6
         }
 
