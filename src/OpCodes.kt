@@ -4,7 +4,7 @@ import unsigned.*
 val ZERO = Ubyte(0)
 val ONE = Ubyte(1)
 
-inline fun Number.toWord(loByte: Number) = this.toUshort().shl(8).or(loByte.toUshort())
+fun Number.toWord(loByte: Number) = this.toUshort().shl(8).or(loByte.toUshort())
 
 fun Ushort.hi() = this.shr(8).toUbyte()
 fun Ushort.lo() = this.and(0xff).toUbyte()

@@ -49,11 +49,14 @@ class SpaceInvaders: Hardware(title = "Space Invaders!",
     private val screen: Canvas = Canvas(screenSize.first, screenSize.second)
 
     private var nextInterrupt = 1
+
+    //Actually 120Hz, there are 2 interrupts per 60Hz refresh
+    //As the game waits for interrupts, make this lower to speed the game up
     private val SIXTY_HERTZ_INTERRUPT = 8L
 
-    private var port0: Port = Port()
-    private var port1: Port = Port()
-    private var port2: Port = Port()
+    private var port0 = Port()
+    private var port1 = Port()
+    private var port2 = Port()
 
     override fun inOp(port: Ubyte): Ubyte {
 //        println("port1 is now ${port1.value}")
@@ -77,7 +80,7 @@ class SpaceInvaders: Hardware(title = "Space Invaders!",
     }
 
     override fun interrupt(num: Int) {
-        //num == 1 means "scanline in the middle"
+        //num == 1 means "scanline in the middle" so ignore it
         //otherwise we draw twice as fast
         if(num == 1) return
 
@@ -115,24 +118,7 @@ class SpaceInvaders: Hardware(title = "Space Invaders!",
         emulator.setInterrupt(SIXTY_HERTZ_INTERRUPT) {
             emulator.interrupt(nextInterrupt)
             nextInterrupt = if(nextInterrupt == 1) 2 else 1
-
-
         }
-
-//        debugSymbols.forEach { addr,symbol ->
-//            hooks.put(Ushort(addr)) {
-//                println(symbol)
-//            }
-//        }
-
-//        hooks.put(Ushort(0x0995), { state ->
-//            println("adding 1 to ${state.a}.       Flags are ${state.flags}")
-//            state.int_enable = false
-//        })
-
-//        hooks.put(Ushort(0x0037), { state ->
-//            println("added 1, A is now ${state.a}. Flags are ${state.flags}")
-//        })
     }
 
     override fun createInterface(): Scene {
