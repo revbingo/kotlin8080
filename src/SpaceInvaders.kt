@@ -7,7 +7,6 @@ import javafx.scene.control.Button
 import javafx.scene.layout.BorderPane
 import javafx.scene.paint.Color
 import unsigned.Ubyte
-import unsigned.Ushort
 import unsigned.toUbyte
 import kotlin.math.pow
 
@@ -126,13 +125,14 @@ class SpaceInvaders: Hardware(title = "Space Invaders!",
 //            }
 //        }
 
-        hooks.put(Ushort(0x0035), { state ->
-            println("adding 1 to ${state.a}.       Flags are ${state.flags}")
-        })
+//        hooks.put(Ushort(0x0995), { state ->
+//            println("adding 1 to ${state.a}.       Flags are ${state.flags}")
+//            state.int_enable = false
+//        })
 
-        hooks.put(Ushort(0x0037), { state ->
-            println("added 1, A is now ${state.a}. Flags are ${state.flags}")
-        })
+//        hooks.put(Ushort(0x0037), { state ->
+//            println("added 1, A is now ${state.a}. Flags are ${state.flags}")
+//        })
     }
 
     override fun createInterface(): Scene {

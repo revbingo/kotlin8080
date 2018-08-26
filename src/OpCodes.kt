@@ -555,19 +555,19 @@ class PUSH_PSW:StackOpCode(0xf5) {
 abstract class AccumulatorOpCode(opCode: Int): NoArgOpCode(opCode) {
 
     val CYCLES = 4
-    fun setAccum(state: State, func: (Ubyte) -> Ushort): Int {
+    fun setAccum(state: State, rhs: Ushort, func: (Ubyte) -> Ushort): Int {
         val result = func(state.a)
         setFlags(state, result)
-        val halfCarry = (1.xor(result)).xor(state.a).and(0x10)
+        val halfCarry = (rhs.xor(result)).xor(state.a.toUshort()).and(0x10)
         state.flags.ac = (halfCarry > 0)
         state.a = result.and(0xff).toUbyte()
         return CYCLES
     }
 
-    fun withAccum(state: State, func: (Ubyte) -> Ushort): Int {
+    fun withAccum(state: State, rhs: Ushort, func: (Ubyte) -> Ushort): Int {
         val result = func(state.a)
         setFlags(state, result)
-        val halfCarry = (1.xor(result)).xor(state.a).and(0x10)
+        val halfCarry = (rhs.xor(result)).xor(state.a.toUshort()).and(0x10)
         state.flags.ac = (halfCarry > 0)
         return CYCLES
     }
@@ -576,221 +576,221 @@ abstract class AccumulatorOpCode(opCode: Int): NoArgOpCode(opCode) {
 }
 
 class ADD_B:AccumulatorOpCode(0x80) {
-    override fun execute(state: State) = setAccum(state) { it.toUshort() + state.b.toUshort() }
+    override fun execute(state: State) = setAccum(state, state.b.toUshort()) { it.toUshort() + state.b.toUshort() }
 }
 class ADD_C:AccumulatorOpCode(0x81) {
-    override fun execute(state: State) = setAccum(state) { it.toUshort() + state.c.toUshort() }
+    override fun execute(state: State) = setAccum(state, state.c.toUshort()) { it.toUshort() + state.c.toUshort() }
 }
 class ADD_D:AccumulatorOpCode(0x82) {
-    override fun execute(state: State) = setAccum(state) { it.toUshort() + state.d.toUshort() }
+    override fun execute(state: State) = setAccum(state, state.d.toUshort()) { it.toUshort() + state.d.toUshort() }
 }
 class ADD_E:AccumulatorOpCode(0x83) {
-    override fun execute(state: State) = setAccum(state) { it.toUshort() + state.e.toUshort() }
+    override fun execute(state: State) = setAccum(state, state.e.toUshort()) { it.toUshort() + state.e.toUshort() }
 }
 class ADD_H:AccumulatorOpCode(0x84) {
-    override fun execute(state: State) = setAccum(state) { it.toUshort() + state.h.toUshort() }
+    override fun execute(state: State) = setAccum(state, state.h.toUshort()) { it.toUshort() + state.h.toUshort() }
 }
 class ADD_L:AccumulatorOpCode(0x85) {
-    override fun execute(state: State) = setAccum(state) { it.toUshort() + state.l.toUshort() }
+    override fun execute(state: State) = setAccum(state, state.l.toUshort()) { it.toUshort() + state.l.toUshort() }
 }
 class ADD_M:AccumulatorOpCode(0x86) {
     override fun execute(state: State): Int {
-        setAccum(state) { it.toUshort() + state.heap().toUshort() }
+        setAccum(state, state.heap().toUshort()) { it.toUshort() + state.heap().toUshort() }
         return 7
     }
 }
 class ADD_A:AccumulatorOpCode(0x87) {
-    override fun execute(state: State) = setAccum(state) { it.toUshort() + state.a.toUshort() }
+    override fun execute(state: State) = setAccum(state, state.a.toUshort()) { it.toUshort() + state.a.toUshort() }
 }
 class ADC_B:AccumulatorOpCode(0x88) {
-    override fun execute(state: State) = setAccum(state) { it.toUshort() + (withCarry(state, state.b)).toUshort()}
+    override fun execute(state: State) = setAccum(state, (withCarry(state, state.b)).toUshort()) { it.toUshort() + (withCarry(state, state.b)).toUshort()}
 }
 class ADC_C:AccumulatorOpCode(0x89) {
-    override fun execute(state: State) = setAccum(state) { it.toUshort() + (withCarry(state, state.c)).toUshort()}
+    override fun execute(state: State) = setAccum(state, (withCarry(state, state.c)).toUshort()) { it.toUshort() + (withCarry(state, state.c)).toUshort()}
 }
 class ADC_D:AccumulatorOpCode(0x8a) {
-    override fun execute(state: State) = setAccum(state) { it.toUshort() + (withCarry(state, state.d)).toUshort()}
+    override fun execute(state: State) = setAccum(state, (withCarry(state, state.d)).toUshort()) { it.toUshort() + (withCarry(state, state.d)).toUshort()}
 }
 class ADC_E:AccumulatorOpCode(0x8b) {
-    override fun execute(state: State) = setAccum(state) { it.toUshort() + (withCarry(state, state.e)).toUshort()}
+    override fun execute(state: State) = setAccum(state, (withCarry(state, state.e)).toUshort()) { it.toUshort() + (withCarry(state, state.e)).toUshort()}
 }
 class ADC_H:AccumulatorOpCode(0x8c) {
-    override fun execute(state: State) = setAccum(state) { it.toUshort() + (withCarry(state, state.h)).toUshort()}
+    override fun execute(state: State) = setAccum(state, (withCarry(state, state.h)).toUshort()) { it.toUshort() + (withCarry(state, state.h)).toUshort()}
 }
 class ADC_L:AccumulatorOpCode(0x8d) {
-    override fun execute(state: State) = setAccum(state) { it.toUshort() + (withCarry(state, state.l)).toUshort()}
+    override fun execute(state: State) = setAccum(state, (withCarry(state, state.l)).toUshort()) { it.toUshort() + (withCarry(state, state.l)).toUshort()}
 }
 class ADC_M:AccumulatorOpCode(0x8e) {
     override fun execute(state: State): Int {
-        setAccum(state) { it.toUshort() + (withCarry(state, state.heap())).toUshort()}
+        setAccum(state, (withCarry(state, state.heap())).toUshort()) { it.toUshort() + (withCarry(state, state.heap())).toUshort()}
         return 7
     }
 }
 class ADC_A:AccumulatorOpCode(0x8f) {
-    override fun execute(state: State) = setAccum(state) { it.toUshort() + (withCarry(state, state.a)).toUshort()}
+    override fun execute(state: State) = setAccum(state, (withCarry(state, state.a)).toUshort()) { it.toUshort() + (withCarry(state, state.a)).toUshort()}
 }
 class SUB_B:AccumulatorOpCode(0x90) {
-    override fun execute(state: State) = setAccum(state) { it.toUshort() - state.b.toUshort() }
+    override fun execute(state: State) = setAccum(state, state.b.toUshort()) { it.toUshort() - state.b.toUshort() }
 }
 class SUB_C:AccumulatorOpCode(0x91) {
-    override fun execute(state: State) = setAccum(state) { it.toUshort() - state.c.toUshort() }
+    override fun execute(state: State) = setAccum(state, state.c.toUshort()) { it.toUshort() - state.c.toUshort() }
 }
 class SUB_D:AccumulatorOpCode(0x92) {
-    override fun execute(state: State) = setAccum(state) { it.toUshort() - state.d.toUshort() }
+    override fun execute(state: State) = setAccum(state, state.d.toUshort()) { it.toUshort() - state.d.toUshort() }
 }
 class SUB_E:AccumulatorOpCode(0x93) {
-    override fun execute(state: State) = setAccum(state) { it.toUshort() - state.e.toUshort() }
+    override fun execute(state: State) = setAccum(state, state.e.toUshort()) { it.toUshort() - state.e.toUshort() }
 }
 class SUB_H:AccumulatorOpCode(0x94) {
-    override fun execute(state: State) = setAccum(state) { it.toUshort() - state.h.toUshort() }
+    override fun execute(state: State) = setAccum(state, state.h.toUshort()) { it.toUshort() - state.h.toUshort() }
 }
 class SUB_L:AccumulatorOpCode(0x95) {
-    override fun execute(state: State) = setAccum(state) { it.toUshort() - state.l.toUshort() }
+    override fun execute(state: State) = setAccum(state, state.l.toUshort()) { it.toUshort() - state.l.toUshort() }
 }
 class SUB_M:AccumulatorOpCode(0x96) {
     override fun execute(state: State): Int {
-        setAccum(state) { it.toUshort() - state.heap().toUshort() }
+        setAccum(state, state.heap().toUshort()) { it.toUshort() - state.heap().toUshort() }
         return 7
     }
 }
 class SUB_A:AccumulatorOpCode(0x97) {
-    override fun execute(state: State) = setAccum(state) { it.toUshort() - state.a.toUshort() }
+    override fun execute(state: State) = setAccum(state, state.a.toUshort()) { it.toUshort() - state.a.toUshort() }
 }
 class SBB_B:AccumulatorOpCode(0x98) {
-    override fun execute(state: State) = setAccum(state) { it.toUshort() - (withCarry(state, state.b)).toUshort()}
+    override fun execute(state: State) = setAccum(state, (withCarry(state, state.b)).toUshort()) { it.toUshort() - (withCarry(state, state.b)).toUshort()}
 }
 class SBB_C:AccumulatorOpCode(0x99) {
-    override fun execute(state: State) = setAccum(state) { it.toUshort() - (withCarry(state, state.c)).toUshort()}
+    override fun execute(state: State) = setAccum(state, (withCarry(state, state.c)).toUshort()) { it.toUshort() - (withCarry(state, state.c)).toUshort()}
 }
 class SBB_D:AccumulatorOpCode(0x9a) {
-    override fun execute(state: State) = setAccum(state) { it.toUshort() - (withCarry(state, state.d)).toUshort()}
+    override fun execute(state: State) = setAccum(state, (withCarry(state, state.d)).toUshort()) { it.toUshort() - (withCarry(state, state.d)).toUshort()}
 }
 class SBB_E:AccumulatorOpCode(0x9b) {
-    override fun execute(state: State) = setAccum(state) { it.toUshort() - (withCarry(state, state.e)).toUshort()}
+    override fun execute(state: State) = setAccum(state, (withCarry(state, state.e)).toUshort()) { it.toUshort() - (withCarry(state, state.e)).toUshort()}
 }
 class SBB_H:AccumulatorOpCode(0x9c) {
-    override fun execute(state: State) = setAccum(state) { it.toUshort() - (withCarry(state, state.h)).toUshort()}
+    override fun execute(state: State) = setAccum(state, (withCarry(state, state.h)).toUshort()) { it.toUshort() - (withCarry(state, state.h)).toUshort()}
 }
 class SBB_L:AccumulatorOpCode(0x9d) {
-    override fun execute(state: State) = setAccum(state) { it.toUshort() - (withCarry(state, state.l)).toUshort()}
+    override fun execute(state: State) = setAccum(state, (withCarry(state, state.l)).toUshort()) { it.toUshort() - (withCarry(state, state.l)).toUshort()}
 }
 class SBB_M:AccumulatorOpCode(0x9e) {
     override fun execute(state: State): Int {
-        setAccum(state) { it.toUshort() - (withCarry(state, state.heap())).toUshort()}
+        setAccum(state, (withCarry(state, state.heap())).toUshort()) { it.toUshort() - (withCarry(state, state.heap())).toUshort()}
         return 7
     }
 }
 class SBB_A:AccumulatorOpCode(0x9f) {
-    override fun execute(state: State) = setAccum(state) { it.toUshort() - (withCarry(state, state.a)).toUshort()}
+    override fun execute(state: State) = setAccum(state, (withCarry(state, state.a)).toUshort()) { it.toUshort() - (withCarry(state, state.a)).toUshort()}
 }
 
 class ANA_B:AccumulatorOpCode(0xa0) {
-    override fun execute(state: State) = setAccum(state) { it.and(state.b).toUshort() }
+    override fun execute(state: State) = setAccum(state, state.b.toUshort()) { it.and(state.b).toUshort() }
 }
 class ANA_C:AccumulatorOpCode(0xa1) {
-    override fun execute(state: State) = setAccum(state) { it.and(state.c).toUshort() }
+    override fun execute(state: State) = setAccum(state, state.c.toUshort()) { it.and(state.c).toUshort() }
 }
 class ANA_D:AccumulatorOpCode(0xa2) {
-    override fun execute(state: State) = setAccum(state) { it.and(state.d).toUshort() }
+    override fun execute(state: State) = setAccum(state, state.d.toUshort()) { it.and(state.d).toUshort() }
 }
 class ANA_E:AccumulatorOpCode(0xa3) {
-    override fun execute(state: State) = setAccum(state) { it.and(state.e).toUshort() }
+    override fun execute(state: State) = setAccum(state, state.e.toUshort()) { it.and(state.e).toUshort() }
 }
 class ANA_H:AccumulatorOpCode(0xa4) {
-    override fun execute(state: State) = setAccum(state) { it.and(state.h).toUshort() }
+    override fun execute(state: State) = setAccum(state, state.h.toUshort()) { it.and(state.h).toUshort() }
 }
 class ANA_L:AccumulatorOpCode(0xa5) {
-    override fun execute(state: State) = setAccum(state) { it.and(state.l).toUshort() }
+    override fun execute(state: State) = setAccum(state, state.l.toUshort()) { it.and(state.l).toUshort() }
 }
 class ANA_M:AccumulatorOpCode(0xa6) {
     override fun execute(state: State): Int {
-        setAccum(state) { it.and(state.heap()).toUshort() }
+        setAccum(state, state.heap().toUshort()) { it.and(state.heap()).toUshort() }
         return 7
     }
 }
 class ANA_A:AccumulatorOpCode(0xa7) {
-    override fun execute(state: State) = setAccum(state) { it.and(state.a).toUshort() }
+    override fun execute(state: State) = setAccum(state, state.a.toUshort()) { it.and(state.a).toUshort() }
 }
 class XRA_B:AccumulatorOpCode(0xa8) {
-    override fun execute(state: State) = setAccum(state) { it.xor(state.b).toUshort() }
+    override fun execute(state: State) = setAccum(state, state.b.toUshort()) { it.xor(state.b).toUshort() }
 }
 class XRA_C:AccumulatorOpCode(0xa9) {
-    override fun execute(state: State) = setAccum(state) { it.xor(state.c).toUshort() }
+    override fun execute(state: State) = setAccum(state, state.c.toUshort()) { it.xor(state.c).toUshort() }
 }
 class XRA_D:AccumulatorOpCode(0xaa) {
-    override fun execute(state: State) = setAccum(state) { it.xor(state.d).toUshort() }
+    override fun execute(state: State) = setAccum(state, state.d.toUshort()) { it.xor(state.d).toUshort() }
 }
 class XRA_E:AccumulatorOpCode(0xab) {
-    override fun execute(state: State) = setAccum(state) { it.xor(state.e).toUshort() }
+    override fun execute(state: State) = setAccum(state, state.e.toUshort()) { it.xor(state.e).toUshort() }
 }
 class XRA_H:AccumulatorOpCode(0xac) {
-    override fun execute(state: State) = setAccum(state) { it.xor(state.h).toUshort() }
+    override fun execute(state: State) = setAccum(state, state.h.toUshort()) { it.xor(state.h).toUshort() }
 }
 class XRA_L:AccumulatorOpCode(0xad) {
-    override fun execute(state: State) = setAccum(state) { it.xor(state.l).toUshort() }
+    override fun execute(state: State) = setAccum(state, state.l.toUshort()) { it.xor(state.l).toUshort() }
 }
 class XRA_M:AccumulatorOpCode(0xae) {
     override fun execute(state: State): Int {
-        setAccum(state) { it.xor(state.heap()).toUshort() }
+        setAccum(state, state.heap().toUshort()) { it.xor(state.heap()).toUshort() }
         return 7
     }
 }
 class XRA_A:AccumulatorOpCode(0xaf) {
-    override fun execute(state: State) = setAccum(state) { it.xor(state.a).toUshort() }
+    override fun execute(state: State) = setAccum(state, state.a.toUshort()) { it.xor(state.a).toUshort() }
 }
 class ORA_B:AccumulatorOpCode(0xb0) {
-    override fun execute(state: State) = setAccum(state) { it.or(state.b).toUshort() }
+    override fun execute(state: State) = setAccum(state, state.b.toUshort()) { it.or(state.b).toUshort() }
 }
 class ORA_C:AccumulatorOpCode(0xb1) {
-    override fun execute(state: State) = setAccum(state) { it.or(state.c).toUshort() }
+    override fun execute(state: State) = setAccum(state, state.c.toUshort()) { it.or(state.c).toUshort() }
 }
 class ORA_D:AccumulatorOpCode(0xb2) {
-    override fun execute(state: State) = setAccum(state) { it.or(state.d).toUshort() }
+    override fun execute(state: State) = setAccum(state, state.d.toUshort()) { it.or(state.d).toUshort() }
 }
 class ORA_E:AccumulatorOpCode(0xb3) {
-    override fun execute(state: State) = setAccum(state) { it.or(state.e).toUshort() }
+    override fun execute(state: State) = setAccum(state, state.e.toUshort()) { it.or(state.e).toUshort() }
 }
 class ORA_H:AccumulatorOpCode(0xb4) {
-    override fun execute(state: State) = setAccum(state) { it.or(state.h).toUshort() }
+    override fun execute(state: State) = setAccum(state, state.h.toUshort()) { it.or(state.h).toUshort() }
 }
 class ORA_L:AccumulatorOpCode(0xb5) {
-    override fun execute(state: State) = setAccum(state) { it.or(state.l).toUshort() }
+    override fun execute(state: State) = setAccum(state, state.l.toUshort()) { it.or(state.l).toUshort() }
 }
 class ORA_M:AccumulatorOpCode(0xb6) {
     override fun execute(state: State): Int {
-        setAccum(state) { it.or(state.heap()).toUshort() }
+        setAccum(state, state.heap().toUshort()) { it.or(state.heap()).toUshort() }
         return 7
     }
 }
 class ORA_A:AccumulatorOpCode(0xb7) {
-    override fun execute(state: State) = setAccum(state) { it.or(state.a).toUshort() }
+    override fun execute(state: State) = setAccum(state, state.a.toUshort()) { it.or(state.a).toUshort() }
 }
 class CMP_B:AccumulatorOpCode(0xb8) {
-    override fun execute(state: State) = withAccum(state) { it.toUshort() - state.b.toUshort() }
+    override fun execute(state: State) = withAccum(state, state.b.toUshort()) { it.toUshort() - state.b.toUshort() }
 }
 class CMP_C:AccumulatorOpCode(0xb9) {
-    override fun execute(state: State) = withAccum(state) { it.toUshort() - state.c.toUshort() }
+    override fun execute(state: State) = withAccum(state, state.c.toUshort()) { it.toUshort() - state.c.toUshort() }
 }
 class CMP_D:AccumulatorOpCode(0xba) {
-    override fun execute(state: State) = withAccum(state) { it.toUshort() - state.d.toUshort() }
+    override fun execute(state: State) = withAccum(state, state.d.toUshort()) { it.toUshort() - state.d.toUshort() }
 }
 class CMP_E:AccumulatorOpCode(0xbb) {
-    override fun execute(state: State) = withAccum(state) { it.toUshort() - state.e.toUshort() }
+    override fun execute(state: State) = withAccum(state, state.e.toUshort()) { it.toUshort() - state.e.toUshort() }
 }
 class CMP_H:AccumulatorOpCode(0xbc) {
-    override fun execute(state: State) = withAccum(state) { it.toUshort() - state.h.toUshort() }
+    override fun execute(state: State) = withAccum(state, state.h.toUshort()) { it.toUshort() - state.h.toUshort() }
 }
 class CMP_L:AccumulatorOpCode(0xbd) {
-    override fun execute(state: State) = withAccum(state) { it.toUshort() - state.l.toUshort() }
+    override fun execute(state: State) = withAccum(state, state.l.toUshort()) { it.toUshort() - state.l.toUshort() }
 }
 class CMP_M:AccumulatorOpCode(0xbe) {
     override fun execute(state: State): Int {
-        withAccum(state) { it.toUshort() - state.heap().toUshort() }
+        withAccum(state, state.heap().toUshort()) { it.toUshort() - state.heap().toUshort() }
         return 7
     }
 }
 class CMP_A:AccumulatorOpCode(0xbf) {
-    override fun execute(state: State) = withAccum(state) { it.toUshort() - state.a.toUshort() }
+    override fun execute(state: State) = withAccum(state, state.a.toUshort()) { it.toUshort() - state.a.toUshort() }
 }
 // ---- ==================================================== --------
 // ---- ======================a============================== --------
@@ -1710,11 +1710,11 @@ class IN:ByteOpCode(0xdb) {
 class DAA:NoArgOpCode(0x27) {
     override fun execute(state: State): Int {
         if(state.a.and(0xf) > 9 || state.flags.ac) {
-            state.a += 6
+            addA(state, Ubyte(0x6))
         }
 
         if(state.a.and(0xf0).shr(4) > 9 || state.flags.cy) {
-            state.a += 0x60
+            addA(state, Ubyte(0x60))
         }
         return 4
     }
