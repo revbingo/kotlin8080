@@ -21,6 +21,10 @@ fun disassemble(emulator: Emulator8080, offset: Int) {
 }
 
 class Emulator8080(val hardware: Hardware, val memSize: Int) {
+
+    val EMULATOR_CYCLES_PER_SEC = 2000000
+
+    val nanosPerCycle = (1/EMULATOR_CYCLES_PER_SEC) * 1e9
     val state = State(hardware, memSize)
 
     val debug: Int = 0
@@ -89,7 +93,7 @@ class Emulator8080(val hardware: Hardware, val memSize: Int) {
                 } else {
                     val timeNow = System.nanoTime()
                     if(lastInstruction == 0L) lastInstruction = timeNow
-                    cyclesToProcess = Math.round((timeNow - lastInstruction)/500.0)
+                    cyclesToProcess = Math.round((timeNow - lastInstruction)/nanosPerCycle)
                     lastInstruction = timeNow
                     Thread.sleep(10)
                 }
