@@ -1,14 +1,17 @@
 
+
 import javafx.application.Application
 import javafx.application.Platform
 import javafx.scene.Scene
 import javafx.scene.canvas.Canvas
 import javafx.scene.control.Button
 import javafx.scene.layout.BorderPane
+import javafx.scene.layout.HBox
 import javafx.scene.paint.Color
 import unsigned.Ubyte
 import unsigned.toUbyte
 import kotlin.math.pow
+
 
 class ExternalShift {
     var shift0: Ubyte = ZERO
@@ -59,7 +62,6 @@ class SpaceInvaders: Hardware(title = "Space Invaders!",
     private var port2 = Port()
 
     override fun inOp(port: Ubyte): Ubyte {
-//        println("port1 is now ${port1.value}")
         return when(port.toInt()) {
             0x0 -> port0.value
             0x1 -> port1.value
@@ -121,18 +123,24 @@ class SpaceInvaders: Hardware(title = "Space Invaders!",
         }
     }
 
+    private fun reset() {
+        emulator.state.halt()
+        emulator.reset()
+        Thread.sleep(100)
+        runEmulator()
+    }
+
     override fun createInterface(): Scene {
         val root = BorderPane()
         root.center = screen
 
+        val hbox = HBox()
         val reset = Button("Reset")
-        root.bottom = reset
+        hbox.children.add(reset)
+        root.bottom = hbox
 
         reset.setOnAction {
-            emulator.state.halt()
-            emulator.reset()
-            Thread.sleep(100)
-            runEmulator()
+            this.reset()
         }
         val scene = Scene(root, screenSize.first, screenSize.second + 40)
         bindKeys(scene)
@@ -154,10 +162,22 @@ class SpaceInvaders: Hardware(title = "Space Invaders!",
                 "t" to tilt
         )
 
+        val toggleBindings = mapOf(
+                "3" to dip3,
+                "4" to dip4,
+                "5" to dip5,
+                "6" to dip6,
+                "7" to dip7
+
+        )
+
         scene.setOnKeyPressed { e ->
             if(keyPressBindings.containsKey(e.text)) {
                 val switch = keyPressBindings[e.text]!!
                 switch.first.value = switch.first.value.or(switch.second)
+            } else if(toggleBindings.containsKey(e.text)) {
+                val switch = toggleBindings[e.text]!!
+                switch.toggle()
             }
         }
         scene.setOnKeyReleased { e ->
@@ -180,8 +200,24 @@ class SpaceInvaders: Hardware(title = "Space Invaders!",
 
     private val tilt = port2 bit 2
 
-    fun Int.pow(exp: Int) = this.toDouble().pow(exp).toInt()
-    infix fun Port.bit(bit: Int) = Pair(this, 2.pow(bit))
+    private val dip3 = port2 bit 0
+    private val dip5 = port2 bit 1
+
+    private val dip4 = port0 bit 0
+
+    private val dip6 = port2 bit 3
+    private val dip7 = port2 bit 7
+
+    private fun Int.pow(exp: Int) = this.toDouble().pow(exp).toInt()
+    private infix fun Port.bit(bit: Int) = Pair(this, 2.pow(bit))
+
+    private fun Pair<Port, Int>.toggle() {
+        if(this.first.value.and(this.second) == ZERO) {
+            this.first.value = this.first.value.or(this.second)
+        } else {
+            this.first.value = this.first.value.and(this.second.inv())
+        }
+    }
 
 }
 
