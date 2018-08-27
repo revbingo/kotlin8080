@@ -2,6 +2,10 @@
 
 A Kotlin-based 8080 emulator. 
 
+## Diagnostics
+
+If it's green, you're good!  Note that the test does not necessarily pick up all bugs...
+
 ## Space Invaders
 
 * Press 'c' to insert a coin
