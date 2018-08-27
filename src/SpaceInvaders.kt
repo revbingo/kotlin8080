@@ -7,9 +7,11 @@ import javafx.scene.canvas.Canvas
 import javafx.scene.control.Button
 import javafx.scene.layout.BorderPane
 import javafx.scene.layout.HBox
+import javafx.scene.media.AudioClip
 import javafx.scene.paint.Color
 import unsigned.Ubyte
 import unsigned.toUbyte
+import java.io.File
 import kotlin.math.pow
 
 
@@ -60,6 +62,8 @@ class SpaceInvaders: Hardware(title = "Space Invaders!",
     private var port0 = Port()
     private var port1 = Port()
     private var port2 = Port()
+    private var port3 = Port()
+    private var port5 = Port()
 
     override fun inOp(port: Ubyte): Ubyte {
         return when(port.toInt()) {
@@ -74,10 +78,24 @@ class SpaceInvaders: Hardware(title = "Space Invaders!",
     override fun outOp(port: Ubyte, value: Ubyte) {
         when(port.toInt()) {
             0x2 -> externalShift.shiftOffset = value.and(0x7)
+            0x3 -> {
+                        val oldValue = port3.value
+                        if(oldValue != value) {
+                            port3.value = value
+                            playSound(port, oldValue, value)
+                        }
+                    }
             0x4 -> {
                 externalShift.shift0 = externalShift.shift1
                 externalShift.shift1 = value
             }
+            0x5 -> {
+                        val oldValue = port5.value
+                        if(oldValue != value) {
+                            port5.value = value
+                            playSound(port, oldValue, value)
+                        }
+                    }
         }
     }
 
@@ -146,6 +164,49 @@ class SpaceInvaders: Hardware(title = "Space Invaders!",
         bindKeys(scene)
         return scene
 
+    }
+
+    private val soundFileNames = mapOf(
+            (port3 bit 0) to "ufo_highpitch.wav",
+            (port3 bit 1) to "shoot.wav",
+            (port3 bit 2) to "basehit.wav",
+            (port3 bit 3) to "invaderkilled.wav",
+            (port5 bit 0) to "fastinvader1.wav",
+            (port5 bit 1) to "fastinvader2.wav",
+            (port5 bit 2) to "fastinvader3.wav",
+            (port5 bit 3) to "fastinvader4.wav",
+            (port5 bit 4) to "ufohit.wav"
+
+            )
+
+    private val sounds = soundFileNames.mapValues { v ->
+        val ac = AudioClip(File("resources/sounds/${v.value}").toURI().toString())
+        if(v.value == "ufo_highpitch.wav") {
+            ac.cycleCount = AudioClip.INDEFINITE
+        }
+        ac
+    }
+
+    private fun playSound(port: Ubyte, oldValue: Ubyte, newValue: Ubyte) {
+        //No sound if amp disabled
+        if((port2 bit 5).isUnset()) return
+
+        val changedBits = oldValue.xor(newValue)
+        val setBits = changedBits.and(newValue)
+        val unsetBits = changedBits.and(oldValue)
+
+        (0..7).forEach { i ->
+            val bitIsSet = setBits.shr(i) == ONE
+            val bitIsUnset = unsetBits.shr(i) == ONE
+            val thePort = if(port == Ubyte(3)) port3 else port5
+            if(bitIsSet) {
+                sounds[(thePort bit i)]?.play()
+            } else if(bitIsUnset && port == Ubyte(3) && i == 0) {
+                //ufo
+                sounds[(thePort bit i)]?.stop()
+            }
+
+        }
     }
 
     private fun bindKeys(scene: Scene) {
@@ -219,6 +280,11 @@ class SpaceInvaders: Hardware(title = "Space Invaders!",
         }
     }
 
+    private fun Pair<Port, Int>.isSet(): Boolean {
+        return this.first.value.and(this.second) == ZERO
+    }
+
+    private fun Pair<Port, Int>.isUnset() = !this.isSet()
 }
 
 fun main(args: Array<String>) {

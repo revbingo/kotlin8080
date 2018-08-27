@@ -120,9 +120,9 @@ class Emulator8080(val hardware: Hardware, val memSize: Int) {
         if(debug >= 1) debug("Executing")
     }
 
-    inline fun execNextInstruction(): Int = currentOp!!.execAndAdvance(state)
+    fun execNextInstruction(): Int = currentOp!!.execAndAdvance(state)
 
-    inline fun debug(action: String) {
+    fun debug(action: String) {
         when(state.pc.toInt()) {
             0x01AB -> log.println("TEST JUMP INSTRUCTIONS")
             0x22A -> log.println("TEST ACCUMULATOR IMMEDIATE")
@@ -219,12 +219,7 @@ class State(val hardware: Hardware, memSize: Int) {
     fun bc() = b.toWord(c)
 
     fun heap() = this.memory[this.hl()]
-
-    fun writeMem(address: Ushort, value: Ubyte) {
-        this.memory[address.toInt()] = value
-    }
-    fun stack() = this.memory[this.sp]
-
+    
     fun push(value: Ushort) {
         this.memory[this.sp - 2] = value.lo()
         this.memory[this.sp - 1] = value.hi()
