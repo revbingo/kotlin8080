@@ -32,9 +32,10 @@ class Emulator8080(val hardware: Hardware, val memSize: Int) {
 
     var opCount = 0
 
-    var log = File("debug.log").printWriter()
+    private var log = File("debug.log").printWriter()
 
     val interrupts = mutableListOf<() -> Timer>()
+    private val runningInterrupts = mutableListOf<Timer>()
 
     var interrupt: Int = 0
 
@@ -45,6 +46,10 @@ class Emulator8080(val hardware: Hardware, val memSize: Int) {
     }
 
     fun reset() {
+        runningInterrupts.forEach { t -> t.cancel() }
+
+        interrupts.clear()
+
         state.a = Ubyte(0)
         state.b = Ubyte(0)
         state.c = Ubyte(0)
@@ -69,7 +74,7 @@ class Emulator8080(val hardware: Hardware, val memSize: Int) {
 
     fun run() {
         //start the interrupts
-        interrupts.forEach { t -> t() }
+        interrupts.mapTo(runningInterrupts) { t -> t() }
 
         var lastInstruction: Long = 0
         var cyclesToProcess: Long = 0
@@ -219,7 +224,7 @@ class State(val hardware: Hardware, memSize: Int) {
     fun bc() = b.toWord(c)
 
     fun heap() = this.memory[this.hl()]
-    
+
     fun push(value: Ushort) {
         this.memory[this.sp - 2] = value.lo()
         this.memory[this.sp - 1] = value.hi()

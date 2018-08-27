@@ -176,7 +176,6 @@ class SpaceInvaders: Hardware(title = "Space Invaders!",
             (port5 bit 2) to "fastinvader3.wav",
             (port5 bit 3) to "fastinvader4.wav",
             (port5 bit 4) to "ufohit.wav"
-
             )
 
     private val sounds = soundFileNames.mapValues { v ->
@@ -229,7 +228,6 @@ class SpaceInvaders: Hardware(title = "Space Invaders!",
                 "5" to dip5,
                 "6" to dip6,
                 "7" to dip7
-
         )
 
         scene.setOnKeyPressed { e ->
