@@ -261,16 +261,19 @@ fun opCodeFor(opCode: Ubyte): OpCode = opCodes[opCode.toInt()]!!
 abstract class OpCode(val opCode: Int, val operandCount: Int = 0, val noAdvance: Boolean = false) {
 
     var offset: Ushort = Ushort(0)
+    var state: State = NullState()
+
     override fun toString(): String {
         return "${String.format("%04X", offset.toInt())}\t${this.represent()}"
     }
 
-    fun consume(pc: Ushort, bytes: Array<Ubyte>) {
-        offset = pc
-        consumeInternal(bytes.sliceArray((pc+1).toInt()..(pc+this.operandCount).toInt()))
+    fun consume(state: State) {
+        this.offset = state.pc
+        this.state = state
+        consumeInternal()
     }
 
-    open fun consumeInternal(bytes: Array<Ubyte>) {}
+    open fun consumeInternal() {}
     abstract fun represent(): String
 
     fun execAndAdvance(state: State): Int {
@@ -335,8 +338,8 @@ abstract class ByteOpCode(opCode: Int, noAdvance: Boolean = false): OpCode(opCod
     var value: Ubyte? = null
     override fun represent(): String = "${this.javaClass.simpleName.replaceFirst("_", "\t")}${if(this.javaClass.simpleName.contains("_")) "," else "\t"}#${value.hex()}"
 
-    override fun consumeInternal(bytes: Array<Ubyte>) {
-        value = bytes[0].toUbyte()
+    override fun consumeInternal() {
+        value = state.memory[state.pc + 1].toUbyte()
     }
 }
 
@@ -348,9 +351,9 @@ abstract class WordOpCode(opCode: Int, noAdvance: Boolean = false): OpCode(opCod
 
     override fun represent(): String = "${this.javaClass.simpleName.replaceFirst("_", "\t")}${if(this.javaClass.simpleName.contains("_")) "," else "\t"}#${value.hex(isWord = true)}"
 
-    override fun consumeInternal(bytes: Array<Ubyte>) {
-        hi = bytes[1].toUbyte()
-        lo = bytes[0].toUbyte()
+    override fun consumeInternal() {
+        hi = state.memory[state.pc + 2].toUbyte()
+        lo = state.memory[state.pc + 1].toUbyte()
     }
 }
 

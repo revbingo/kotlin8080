@@ -47,3 +47,7 @@ abstract class Hardware(val title: String, val fileWithOffset: Pair<String, Int>
         primaryStage.show()
     }
 }
+
+class NullHardware: Hardware("", "" to 0, 0.0 to 0.0, 0) {
+    override fun createInterface() = TODO("not implemented")
+}

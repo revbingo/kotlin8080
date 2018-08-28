@@ -16,7 +16,7 @@ fun disassemble(emulator: Emulator8080, offset: Int) {
     do {
         val nextByte = emulator.state.memory[pc]
         val opCode = opCodeFor(nextByte.toUbyte())
-        opCode.consume(pc, emulator.state.memory)
+        opCode.consume(emulator.state)
         println(opCode.toString())
         pc += opCode.operandCount + 1
     } while(pc < emulator.state.memory.size)
@@ -120,7 +120,7 @@ class Emulator8080(val hardware: Hardware, val memSize: Int) {
         val nextInst = state.memory[state.pc]
 
         currentOp = opCodeFor(nextInst)
-        currentOp!!.consume(state.pc, state.memory)
+        currentOp!!.consume(state)
 
         if(debug >= 1) debug("Executing")
     }
@@ -196,7 +196,7 @@ class Flags(val state: State) {
     }
 }
 
-class State(val hardware: Hardware, memSize: Int) {
+open class State(val hardware: Hardware, memSize: Int) {
     var a: Ubyte = Ubyte(0)
     var b: Ubyte = Ubyte(0)
     var c: Ubyte = Ubyte(0)
@@ -250,3 +250,5 @@ class State(val hardware: Hardware, memSize: Int) {
         halted = true
     }
 }
+
+class NullState: State(NullHardware(), 0)
