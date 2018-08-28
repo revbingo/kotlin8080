@@ -312,7 +312,7 @@ abstract class OpCode(val opCode: Int, val operandCount: Int = 0, val noAdvance:
     fun addA(byte: Ubyte): Ubyte {
         val result = state.a.toUshort() + byte.toUshort()
         setFlags(result)
-        val halfCarry = (1.xor(result)).xor(state.a).and(0x10)
+        val halfCarry = (byte.toUshort().xor(result)).xor(state.a.toUshort()).and(0x10)
         state.flags.ac = (halfCarry > 0)
         state.a = result.and(0xff).toUbyte()
         return result.and(0xff).toUbyte()
@@ -321,13 +321,11 @@ abstract class OpCode(val opCode: Int, val operandCount: Int = 0, val noAdvance:
     fun subA(byte: Ubyte): Ubyte {
         val result = state.a.toUshort() - byte.toUshort()
         setFlags(result)
-        val halfCarry = (1.xor(result)).xor(state.a).and(0x10)
+        val halfCarry = (byte.toUshort().xor(result)).xor(state.a.toUshort()).and(0x10)
         state.flags.ac = (halfCarry > 0)
         state.a = result.and(0xff).toUbyte()
         return result.and(0xff).toUbyte()
     }
-
-
 }
 
 abstract class NoArgOpCode(opCode: Int, noAdvance: Boolean = false): OpCode(opCode, 0, noAdvance) {
