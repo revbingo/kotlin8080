@@ -1,4 +1,4 @@
-
+package gameboy
 import javafx.application.Application
 import javafx.scene.Scene
 import javafx.stage.Stage
@@ -20,7 +20,8 @@ abstract class Hardware(val title: String, val fileWithOffset: Pair<String, Int>
 
     open fun initEmulator() {}
     open fun interrupt(num: Int) {}
-    open fun inOp(port: Ubyte): Ubyte { return ZERO }
+    open fun inOp(port: Ubyte): Ubyte { return ZERO
+    }
     open fun outOp(port: Ubyte, value: Ubyte) {}
 
     abstract fun createInterface(): Scene
