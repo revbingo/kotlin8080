@@ -329,18 +329,16 @@ abstract class OpCode(val opCode: Int, val operandCount: Int = 0, val noAdvance:
         return (0 == (p.and(0x1)))
     }
 
-    fun addA(byte: Ubyte): Ubyte {
-        val result = state.a.toUshort() + byte.toUshort()
-        setFlags(result, state.a, byte)
-        state.a = result.toUbyte()
+    fun addA(lhs: Ubyte, rhs: Ubyte): Ubyte {
+        val result = lhs.toUshort() + rhs.toUshort()
+        setFlags(result, lhs, rhs)
         return result.toUbyte()
     }
 
-    fun subA(byte: Ubyte): Ubyte {
-        val result = state.a.toUshort() - byte.toUshort()
-        setFlags(result, state.a, byte)
+    fun subA(lhs: Ubyte, rhs: Ubyte): Ubyte {
+        val result = lhs.toUshort() - rhs.toUshort()
+        setFlags(result, lhs, rhs)
         val resultByte = result.toUbyte()
-        state.a = resultByte
         return resultByte
     }
 }
@@ -354,7 +352,7 @@ abstract class ByteOpCode(opCode: Int, noAdvance: Boolean = false, flags: String
     override fun represent(): String = "${this.javaClass.simpleName.replaceFirst("_", "\t")}${if(this.javaClass.simpleName.contains("_")) "," else "\t"}#${value.hex()}"
 
     override fun consumeInternal() {
-        value = state.memory[state.pc + 1].toUbyte()
+        value = state.peek(+1)
     }
 }
 
@@ -367,8 +365,8 @@ abstract class WordOpCode(opCode: Int, noAdvance: Boolean = false, flags: String
     override fun represent(): String = "${this.javaClass.simpleName.replaceFirst("_", "\t")}${if(this.javaClass.simpleName.contains("_")) "," else "\t"}#${value.hex(isWord = true)}"
 
     override fun consumeInternal() {
-        hi = state.memory[state.pc + 2].toUbyte()
-        lo = state.memory[state.pc + 1].toUbyte()
+        hi = state.peek(+2)
+        lo = state.peek(+1)
     }
 }
 
@@ -421,9 +419,7 @@ abstract class CallOpCode(opCode: Int): WordOpCode(opCode, true) {
     fun callIf(condition: Boolean): Int {
         return if(condition) {
             state.pc += 3
-            state.memory[state.sp - 1] = state.pc.hi()
-            state.memory[state.sp - 2] = state.pc.lo()
-            state.sp -= 2
+            state.pushStack(state.pc)
 
             state.pc = value!!
             ACTION_CYCLES
@@ -465,10 +461,10 @@ class CALL: CallOpCode(0xcd) {
 abstract class ReturnOpCode(opCode:Int): NoArgOpCode(opCode, true) {
     val ACTION_CYCLES: Int = 11
     val NO_ACTION_CYCLES: Int = 5
+
     fun returnIf(condition: Boolean): Int {
         return if(condition) {
-            state.pc = state.memory[state.sp + 1].toWord(state.memory[state.sp])
-            state.sp += 2
+            state.pc = state.popStack()
             ACTION_CYCLES
         } else {
             state.pc += this.operandCount + 1
@@ -509,7 +505,7 @@ abstract class StackOpCode(opCode: Int): NoArgOpCode(opCode)
 
 class POP_B: StackOpCode(0xc1) {
     override fun execute(): Int {
-        val popped = state.pop()
+        val popped = state.popStack()
         state.c = popped.lo()
         state.b = popped.hi()
         return 10
@@ -517,13 +513,13 @@ class POP_B: StackOpCode(0xc1) {
 }
 class PUSH_B: StackOpCode(0xc5) {
     override fun execute(): Int {
-        state.push(state.bc())
+        state.pushStack(state.bc())
         return 11
     }
 }
 class POP_D: StackOpCode(0xd1) {
     override fun execute(): Int {
-        val popped = state.pop()
+        val popped = state.popStack()
         state.e = popped.lo()
         state.d = popped.hi()
         return 10
@@ -532,13 +528,13 @@ class POP_D: StackOpCode(0xd1) {
 
 class PUSH_D: StackOpCode(0xd5) {
     override fun execute(): Int {
-        state.push(state.de())
+        state.pushStack(state.de())
         return 11
     }
 }
 class POP_H: StackOpCode(0xe1) {
     override fun execute(): Int {
-        val popped = state.pop()
+        val popped = state.popStack()
         state.l = popped.lo()
         state.h = popped.hi()
         return 10
@@ -546,13 +542,13 @@ class POP_H: StackOpCode(0xe1) {
 }
 class PUSH_H: StackOpCode(0xe5) {
     override fun execute(): Int {
-        state.push(state.hl())
+        state.pushStack(state.hl())
         return 11
     }
 }
 class POP_PSW: StackOpCode(0xf1) {
     override fun execute(): Int {
-        val popped = state.pop()
+        val popped = state.popStack()
         state.flags.fromByte(popped.lo())
         state.a = popped.hi()
         return 10
@@ -560,7 +556,7 @@ class POP_PSW: StackOpCode(0xf1) {
 }
 class PUSH_PSW: StackOpCode(0xf5) {
     override fun execute(): Int {
-        state.push(state.a.toWord(state.flags.asByte()))
+        state.pushStack(state.a.toWord(state.flags.asByte()))
         return 11
     }
 }
@@ -1245,7 +1241,7 @@ class MOV_B_L: NoArgOpCode(0x45) {
 }
 class MOV_B_M: NoArgOpCode(0x46) {
     override fun execute(): Int {
-        state.b = state.memory[state.hl()]
+        state.b = state.heap()
         return 7
     }
 }
@@ -1293,7 +1289,7 @@ class MOV_C_L: NoArgOpCode(0x4d) {
 }
 class MOV_C_M: NoArgOpCode(0x4e) {
     override fun execute(): Int {
-        state.c = state.memory[state.hl()]
+        state.c = state.heap()
         return 7
     }
 }
@@ -1341,7 +1337,7 @@ class MOV_D_L: NoArgOpCode(0x55) {
 }
 class MOV_D_M: NoArgOpCode(0x56) {
     override fun execute(): Int {
-        state.d = state.memory[state.hl()]
+        state.d = state.heap()
         return 7
     }
 }
@@ -1389,7 +1385,7 @@ class MOV_E_L: NoArgOpCode(0x5d) {
 }
 class MOV_E_M: NoArgOpCode(0x5e) {
     override fun execute(): Int {
-        state.e = state.memory[state.hl()]
+        state.e = state.heap()
         return 7
     }
 }
@@ -1437,7 +1433,7 @@ class MOV_H_L: NoArgOpCode(0x65) {
 }
 class MOV_H_M: NoArgOpCode(0x66) {
     override fun execute(): Int {
-        state.h = state.memory[state.hl()]
+        state.h = state.heap()
         return 7
     }
 }
@@ -1485,7 +1481,7 @@ class MOV_L_L: NoArgOpCode(0x6d) {
 }
 class MOV_L_M: NoArgOpCode(0x6e) {
     override fun execute(): Int {
-        state.l = state.memory[state.hl()]
+        state.l = state.heap()
         return 7
     }
 }
@@ -1595,7 +1591,7 @@ class MOV_A_A: NoArgOpCode(0x7f) {
 
 class ADI: ByteOpCode(0xc6, flags = "SZAPC") {
     override fun execute(): Int {
-        state.a = addA(value!!)
+        state.a = addA(state.a, value!!)
         return 7
     }
 }
@@ -1603,14 +1599,14 @@ class ADI: ByteOpCode(0xc6, flags = "SZAPC") {
 class ACI: ByteOpCode(0xce, flags = "SZAPC") {
     override fun execute(): Int {
         val valAndCarry = value!! + if(state.flags.cy) ONE else ZERO
-        state.a = addA(valAndCarry)
+        state.a = addA(state.a, valAndCarry)
         return 7
     }
 }
 
 class SUI: ByteOpCode(0xd6, flags = "SZAPC") {
     override fun execute(): Int {
-        state.a = subA(value!!)
+        state.a = subA(state.a, value!!)
         return 7
     }
 }
@@ -1618,7 +1614,7 @@ class SUI: ByteOpCode(0xd6, flags = "SZAPC") {
 class SBI: ByteOpCode(0xde, flags = "SZAPC") {
     override fun execute(): Int {
         val valAndCarry = value!! + if(state.flags.cy) 0x1 else 0x0
-        state.a = subA(valAndCarry)
+        state.a = subA(state.a, valAndCarry)
         return 7
     }
 }
@@ -1724,11 +1720,11 @@ class IN: ByteOpCode(0xdb) {
 class DAA: NoArgOpCode(0x27, flags = "SZAPC") {
     override fun execute(): Int {
         if(state.a.and(0xf) > 9 || state.flags.ac) {
-            addA(Ubyte(0x6))
+            state.a = addA(state.a, Ubyte(0x6))
         }
 
         if(state.a.and(0xf0).shr(4) > 9 || state.flags.cy) {
-            addA(Ubyte(0x60))
+            state.a = addA(state.a, Ubyte(0x60))
         }
         return 4
     }

@@ -85,7 +85,7 @@ class Emulator8080(val hardware: Hardware, val memSize: Int) {
                     //If there's an interrupt waiting and they are enabled, process the interrupt
                     if (interrupt > 0 && state.int_enable) {
                         hardware.interrupt(interrupt)
-                        state.push(state.pc)
+                        state.pushStack(state.pc)
                         state.pc = (8 * interrupt).toUshort()
                         interrupt = 0
                         state.int_enable = false
@@ -225,13 +225,15 @@ open class State(val hardware: Hardware, memSize: Int) {
 
     fun heap() = this.memory[this.hl()]
 
-    fun push(value: Ushort) {
+    fun peek(ahead: Int) = this.memory[this.pc + ahead]
+
+    fun pushStack(value: Ushort) {
         this.memory[this.sp - 2] = value.lo()
         this.memory[this.sp - 1] = value.hi()
         this.sp -= 2
     }
 
-    fun pop(): Ushort {
+    fun popStack(): Ushort {
         val loPop = this.memory[this.sp]
         val hiPop= this.memory[this.sp + 1]
         this.sp += 2
