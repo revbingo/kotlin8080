@@ -125,7 +125,7 @@ class Emulator8080(val hardware: Hardware, val memSize: Int) {
         if(debug >= 1) debug("Executing")
     }
 
-    fun execNextInstruction(): Int = currentOp!!.execAndAdvance(state)
+    fun execNextInstruction(): Int = currentOp!!.execAndAdvance()
 
     fun debug(action: String) {
         when(state.pc.toInt()) {
