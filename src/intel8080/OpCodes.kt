@@ -258,10 +258,20 @@ val opCodes = mutableMapOf(0x00 to NOP(),
 
 fun opCodeFor(opCode: Ubyte): OpCode = opCodes[opCode.toInt()]!!
 
-abstract class OpCode(val opCode: Int, val operandCount: Int = 0, val noAdvance: Boolean = false) {
+class FlagSet(val flags: String) {
+
+    val s = flags[0] == 'S'
+    val z = flags[1] == 'Z'
+    val a = flags[2] == 'A'
+    val p = flags[3] == 'P'
+    val c = flags[4] == 'C'
+}
+
+abstract class OpCode(val opCode: Int, val operandCount: Int = 0, val noAdvance: Boolean = false, val flagStr: String = "-----") {
 
     var offset: Ushort = Ushort(0)
     var state: State = NullState()
+    val flags = FlagSet(flagStr)
 
     override fun toString(): String {
         return "${String.format("%04X", offset.toInt())}\t${this.represent()}"
@@ -288,15 +298,25 @@ abstract class OpCode(val opCode: Int, val operandCount: Int = 0, val noAdvance:
         throw RuntimeException("Unimplemented instruction ${this.javaClass.simpleName}")
     }
 
-    fun setFlags(result: Ubyte) = setFlags(result.toUshort())
-    fun setFlags(result: Ushort) {
-        state.flags.z = result.and(0xff).toUbyte() == ZERO
+    fun setFlags(result: Ubyte, lhs: Ubyte? = null, rhs: Ubyte? = null) = setFlags(result.toUshort(), lhs, rhs)
+    fun setFlags(result: Ushort, lhs: Ubyte? = null, rhs: Ubyte? = null) {
 
-        state.flags.s = result.and(0x80).toUbyte() != ZERO
+        if(flags.z)
+            state.flags.z = result.toUbyte() == ZERO
 
-        state.flags.cy = result > 0xff
+        if(flags.s)
+            state.flags.s = result.and(0x80).toUbyte() != ZERO
 
-        state.flags.lastFlaggedValue = result.and(0xff)
+        if(flags.c)
+            state.flags.cy = result > 0xff
+
+        if(flags.p)
+            state.flags.lastFlaggedValue = result.and(0xff)
+
+        if(lhs != null && rhs != null && flags.a) {
+            val halfCarry = (rhs.toUshort().xor(result)).xor(lhs.toUshort()).and(0x10)
+            state.flags.ac = (halfCarry > 0)
+        }
     }
 
     fun parity(result: Ubyte): Boolean {
@@ -311,28 +331,25 @@ abstract class OpCode(val opCode: Int, val operandCount: Int = 0, val noAdvance:
 
     fun addA(byte: Ubyte): Ubyte {
         val result = state.a.toUshort() + byte.toUshort()
-        setFlags(result)
-        val halfCarry = (byte.toUshort().xor(result)).xor(state.a.toUshort()).and(0x10)
-        state.flags.ac = (halfCarry > 0)
-        state.a = result.and(0xff).toUbyte()
-        return result.and(0xff).toUbyte()
+        setFlags(result, state.a, byte)
+        state.a = result.toUbyte()
+        return result.toUbyte()
     }
 
     fun subA(byte: Ubyte): Ubyte {
         val result = state.a.toUshort() - byte.toUshort()
-        setFlags(result)
-        val halfCarry = (byte.toUshort().xor(result)).xor(state.a.toUshort()).and(0x10)
-        state.flags.ac = (halfCarry > 0)
-        state.a = result.and(0xff).toUbyte()
-        return result.and(0xff).toUbyte()
+        setFlags(result, state.a, byte)
+        val resultByte = result.toUbyte()
+        state.a = resultByte
+        return resultByte
     }
 }
 
-abstract class NoArgOpCode(opCode: Int, noAdvance: Boolean = false): OpCode(opCode, 0, noAdvance) {
+abstract class NoArgOpCode(opCode: Int, noAdvance: Boolean = false, flags: String = "-----"): OpCode(opCode, 0, noAdvance, flags) {
     override fun represent(): String = this.javaClass.simpleName.replaceFirst("_", " ").replaceFirst("_", ",")
 }
 
-abstract class ByteOpCode(opCode: Int, noAdvance: Boolean = false): OpCode(opCode, 1, noAdvance) {
+abstract class ByteOpCode(opCode: Int, noAdvance: Boolean = false, flags: String = "-----"): OpCode(opCode, 1, noAdvance, flags) {
     var value: Ubyte? = null
     override fun represent(): String = "${this.javaClass.simpleName.replaceFirst("_", "\t")}${if(this.javaClass.simpleName.contains("_")) "," else "\t"}#${value.hex()}"
 
@@ -341,7 +358,7 @@ abstract class ByteOpCode(opCode: Int, noAdvance: Boolean = false): OpCode(opCod
     }
 }
 
-abstract class WordOpCode(opCode: Int, noAdvance: Boolean = false): OpCode(opCode, 2, noAdvance) {
+abstract class WordOpCode(opCode: Int, noAdvance: Boolean = false, flags: String = "-----"): OpCode(opCode, 2, noAdvance, flags) {
     var value: Ushort? = null
         get() = hi!!.toUshort().shl(8).or(lo!!.toUshort())
     var hi: Ubyte? = null
@@ -357,7 +374,6 @@ abstract class WordOpCode(opCode: Int, noAdvance: Boolean = false): OpCode(opCod
 
 // *** JUMPS ***
 abstract class JumpOpCode(opCode: Int): WordOpCode(opCode, true) {
-    val cycles: Int = 10
 
     fun jumpIf(condition: Boolean): Int {
         if(condition) {
@@ -365,7 +381,7 @@ abstract class JumpOpCode(opCode: Int): WordOpCode(opCode, true) {
         } else {
             state.pc += this.operandCount + 1
         }
-        return cycles
+        return 10
     }
 }
 
@@ -550,31 +566,24 @@ class PUSH_PSW: StackOpCode(0xf5) {
 }
 
 // === ACCUMULATOR OPS
-abstract class AccumulatorOpCode(opCode: Int): NoArgOpCode(opCode) {
-
-    val CYCLES = 4
+abstract class AccumulatorOpCode(opCode: Int): NoArgOpCode(opCode, flags = "SZAPC") {
 
     fun setAccum(state: State, other: Ubyte, func: Ushort.(Ushort) -> Ushort): Int {
         val rhs = other.toUshort()
         val lhs = state.a.toUshort()
         val result = func.invoke(lhs, rhs)
 
-        setFlags(result)
-
-        val halfCarry = (rhs.xor(result)).xor(lhs).and(0x10)
-        state.flags.ac = (halfCarry > 0)
+        setFlags(result, state.a, other)
         state.a = result.and(0xff).toUbyte()
-        return CYCLES
+        return 4
     }
 
     fun withAccum(state: State, other: Ubyte, func: Ushort.(Ushort) -> Ushort): Int {
         val rhs = other.toUshort()
         val lhs = state.a.toUshort()
         val result = func.invoke(lhs, rhs)
-        setFlags(result)
-        val halfCarry = (rhs.xor(result)).xor(lhs).and(0x10)
-        state.flags.ac = (halfCarry > 0)
-        return CYCLES
+        setFlags(result, state.a, other)
+        return 4
     }
 
     fun withCarry(state: State, byte: Ubyte): Ubyte = byte + if(state.flags.cy) 0x1 else 0x0
@@ -824,14 +833,14 @@ class INX_B: NoArgOpCode(0x03) {
         return 5
     }
 }
-class INR_B: NoArgOpCode(0x04) {
+class INR_B: NoArgOpCode(0x04, flags = "SZAP-") {
     override fun execute(): Int {
         state.b += 1
         setFlags(state.b)
         return 5
     }
 }
-class DCR_B: NoArgOpCode(0x05) {
+class DCR_B: NoArgOpCode(0x05, flags = "SZAP-") {
     override fun execute(): Int {
         state.b = state.b - 1
         setFlags(state.b)
@@ -844,7 +853,7 @@ class MVI_B: ByteOpCode(0x06) {
         return 7
     }
 }
-class RLC: NoArgOpCode(0x07) {
+class RLC: NoArgOpCode(0x07, flags = "----C") {
     override fun execute(): Int {
         val highOrder = state.a.and(0x80) != 0x0.toUbyte()
         state.a = state.a.shl(1)
@@ -856,7 +865,7 @@ class RLC: NoArgOpCode(0x07) {
         return 4
     }
 }
-class DAD_B: NoArgOpCode(0x09) {
+class DAD_B: NoArgOpCode(0x09, flags = "----C") {
     override fun execute(): Int {
         val newVal = state.hl().toUint() + state.bc().toUint()
         if(newVal > 0xffff) state.flags.cy = true
@@ -879,14 +888,14 @@ class DCX_B: NoArgOpCode(0x0b) {
         return 5
     }
 }
-class INR_C: NoArgOpCode(0x0c) {
+class INR_C: NoArgOpCode(0x0c, flags = "SZAP-") {
     override fun execute(): Int {
         state.c += 1
         setFlags(state.c)
         return 5
     }
 }
-class DCR_C: NoArgOpCode(0x0d) {
+class DCR_C: NoArgOpCode(0x0d, flags = "SZAP-") {
     override fun execute(): Int {
         state.c -= 1
         setFlags(state.c)
@@ -899,7 +908,7 @@ class MVI_C: ByteOpCode(0x0e) {
         return 7
     }
 }
-class RRC: NoArgOpCode(0x0f) {
+class RRC: NoArgOpCode(0x0f, flags = "----C") {
     override fun execute(): Int {
         val lowOrder = state.a.and(0x1) != 0x0.toUbyte()
         state.a = state.a.shr(1)
@@ -932,7 +941,7 @@ class INX_D: NoArgOpCode(0x13) {
         return 5
     }
 }
-class INR_D: NoArgOpCode(0x14){
+class INR_D: NoArgOpCode(0x14, flags = "SZAP-"){
     override fun execute(): Int {
         state.d += 1
         setFlags(state.d)
@@ -940,7 +949,7 @@ class INR_D: NoArgOpCode(0x14){
     }
 }
 
-class DCR_D: NoArgOpCode(0x15) {
+class DCR_D: NoArgOpCode(0x15, flags = "SZAP-") {
     override fun execute(): Int {
         state.d -= 1
         setFlags(state.d)
@@ -953,7 +962,7 @@ class MVI_D: ByteOpCode(0x16) {
         return 7
     }
 }
-class RAL: NoArgOpCode(0x17) {
+class RAL: NoArgOpCode(0x17, flags = "----C") {
     override fun execute(): Int {
         val highOrder = state.a.and(0x80) != 0x0.toUbyte()
         state.a = state.a.shl(1).or(if(state.flags.cy) ONE else ZERO)
@@ -961,7 +970,7 @@ class RAL: NoArgOpCode(0x17) {
         return 4
     }
 }
-class DAD_D: NoArgOpCode(0x19) {
+class DAD_D: NoArgOpCode(0x19, flags = "----C") {
     override fun execute(): Int {
         val newVal = state.hl().toUint() + state.de().toUint()
         if(newVal > 0xffff) state.flags.cy = true
@@ -984,14 +993,14 @@ class DCX_D: NoArgOpCode(0x1b) {
         return 5
     }
 }
-class INR_E: NoArgOpCode(0x1c) {
+class INR_E: NoArgOpCode(0x1c, flags = "SZAP-") {
     override fun execute(): Int {
         state.e += 1
         setFlags(state.e)
         return 5
     }
 }
-class DCR_E: NoArgOpCode(0x1d) {
+class DCR_E: NoArgOpCode(0x1d, flags = "SZAP-") {
     override fun execute(): Int {
         state.e -= 1
         setFlags(state.e)
@@ -1004,7 +1013,7 @@ class MVI_E: ByteOpCode(0x1e) {
         return 7
     }
 }
-class RAR: NoArgOpCode(0x1f) {
+class RAR: NoArgOpCode(0x1f, flags = "----C") {
     override fun execute(): Int {
         val lowOrder = state.a.and(0x1) != 0x0.toUbyte()
         state.a = state.a.shr(1).or(if(state.flags.cy) 0x80.toUbyte() else ZERO)
@@ -1036,14 +1045,14 @@ class INX_H: NoArgOpCode(0x23) {
     }
 }
 
-class INR_H: NoArgOpCode(0x24) {
+class INR_H: NoArgOpCode(0x24, flags = "SZAP-") {
     override fun execute(): Int {
         state.h += 1
         setFlags(state.h)
         return 5
     }
 }
-class DCR_H: NoArgOpCode(0x25)  {
+class DCR_H: NoArgOpCode(0x25, flags = "SZAP-")  {
     override fun execute(): Int {
         state.h -= 1
         setFlags(state.h)
@@ -1057,7 +1066,7 @@ class MVI_H: ByteOpCode(0x26) {
     }
 }
 
-class DAD_H: NoArgOpCode(0x29) {
+class DAD_H: NoArgOpCode(0x29, flags = "----C") {
     override fun execute(): Int {
         val newVal = state.hl().toUint() + state.hl().toUint()
         if(newVal > 0xffff) state.flags.cy = true
@@ -1081,14 +1090,14 @@ class DCX_H: NoArgOpCode(0x2b) {
         return 5
     }
 }
-class INR_L: NoArgOpCode(0x2c) {
+class INR_L: NoArgOpCode(0x2c, flags = "SZAP-") {
     override fun execute(): Int {
         state.l += 1
         setFlags(state.l)
         return 5
     }
 }
-class DCR_L: NoArgOpCode(0x2d) {
+class DCR_L: NoArgOpCode(0x2d, flags = "SZAP-") {
     override fun execute(): Int {
         state.l -= 1
         setFlags(state.l)
@@ -1125,14 +1134,14 @@ class INX_SP: NoArgOpCode(0x33) {
         return 5
     }
 }
-class INR_M: NoArgOpCode(0x34) {
+class INR_M: NoArgOpCode(0x34, flags = "SZAP-") {
     override fun execute(): Int {
         state.memory[state.hl()] = state.memory[state.hl()] + 1
         setFlags(state.memory[state.hl()])
         return 10
     }
 }
-class DCR_M: NoArgOpCode(0x35) {
+class DCR_M: NoArgOpCode(0x35, flags = "SZAP-") {
     override fun execute(): Int {
         state.memory[state.hl()] = state.memory[state.hl()] - 1
         setFlags(state.memory[state.hl()])
@@ -1145,13 +1154,13 @@ class MVI_M: ByteOpCode(0x36) {
         return 10
     }
 }
-class STC: NoArgOpCode(0x37) {
+class STC: NoArgOpCode(0x37, flags = "----C") {
     override fun execute(): Int {
         state.flags.cy = true
         return 4
     }
 }
-class DAD_SP: NoArgOpCode(0x39) {
+class DAD_SP: NoArgOpCode(0x39, flags = "----C") {
     override fun execute(): Int {
         val newVal = state.hl().toUint() + state.sp.toUint()
         if(newVal > 0xffff) state.flags.cy = true
@@ -1172,14 +1181,14 @@ class DCX_SP: NoArgOpCode(0x3b) {
         return 5
     }
 }
-class INR_A: NoArgOpCode(0x3c) {
+class INR_A: NoArgOpCode(0x3c, flags = "SZAP-") {
     override fun execute(): Int {
         state.a += 1
         setFlags(state.a)
         return 5
     }
 }
-class DCR_A: NoArgOpCode(0x3d) {
+class DCR_A: NoArgOpCode(0x3d, flags = "SZAP-") {
     override fun execute(): Int {
         state.a -= 1
         setFlags(state.a)
@@ -1192,7 +1201,7 @@ class MVI_A: ByteOpCode(0x3e) {
         return 7
     }
 }
-class CMC: NoArgOpCode(0x3f) {
+class CMC: NoArgOpCode(0x3f, flags = "----C") {
     override fun execute(): Int {
         state.flags.cy = !state.flags.cy
         return 4
@@ -1584,14 +1593,14 @@ class MOV_A_A: NoArgOpCode(0x7f) {
 }
 
 
-class ADI: ByteOpCode(0xc6) {
+class ADI: ByteOpCode(0xc6, flags = "SZAPC") {
     override fun execute(): Int {
         state.a = addA(value!!)
         return 7
     }
 }
 
-class ACI: ByteOpCode(0xce) {
+class ACI: ByteOpCode(0xce, flags = "SZAPC") {
     override fun execute(): Int {
         val valAndCarry = value!! + if(state.flags.cy) ONE else ZERO
         state.a = addA(valAndCarry)
@@ -1599,14 +1608,14 @@ class ACI: ByteOpCode(0xce) {
     }
 }
 
-class SUI: ByteOpCode(0xd6) {
+class SUI: ByteOpCode(0xd6, flags = "SZAPC") {
     override fun execute(): Int {
         state.a = subA(value!!)
         return 7
     }
 }
 
-class SBI: ByteOpCode(0xde) {
+class SBI: ByteOpCode(0xde, flags = "SZAPC") {
     override fun execute(): Int {
         val valAndCarry = value!! + if(state.flags.cy) 0x1 else 0x0
         state.a = subA(valAndCarry)
@@ -1628,7 +1637,7 @@ class XTHL: NoArgOpCode(0xe3) {
 }
 
 
-class ANI: ByteOpCode(0xe6) {
+class ANI: ByteOpCode(0xe6, flags = "SZAPC") {
     override fun execute(): Int {
         state.a = state.a.and(value!!)
         setFlags(state.a)
@@ -1656,7 +1665,7 @@ class XCHG: NoArgOpCode(0xeb) {
     }
 }
 
-class XRI: ByteOpCode(0xee) {
+class XRI: ByteOpCode(0xee, flags = "SZAPC") {
     override fun execute(): Int {
         state.a = state.a.xor(value!!)
         setFlags(state.a)
@@ -1664,7 +1673,7 @@ class XRI: ByteOpCode(0xee) {
     }
 }
 
-class ORI: ByteOpCode(0xf6) {
+class ORI: ByteOpCode(0xf6, flags = "SZAPC") {
     override fun execute(): Int {
         state.a = state.a.or(value!!)
         setFlags(state.a)
@@ -1679,7 +1688,7 @@ class SPHL: NoArgOpCode(0xf9) {
     }
 }
 
-class CPI: ByteOpCode(0xfe) {
+class CPI: ByteOpCode(0xfe, flags = "SZAPC") {
     override fun execute(): Int {
         val result = state.a.toUshort() - value!!.toUshort()
         setFlags(result)
@@ -1712,7 +1721,7 @@ class IN: ByteOpCode(0xdb) {
     }
 }
 
-class DAA: NoArgOpCode(0x27) {
+class DAA: NoArgOpCode(0x27, flags = "SZAPC") {
     override fun execute(): Int {
         if(state.a.and(0xf) > 9 || state.flags.ac) {
             addA(Ubyte(0x6))
