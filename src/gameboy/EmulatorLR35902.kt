@@ -10,19 +10,19 @@ fun Number?.hex(isWord: Boolean = false) = String.format("$%0${if(isWord) 4 else
 operator fun Array<Ubyte>.get(addr: Ushort) = this.get(addr.toInt()).toUbyte()
 operator fun Array<Ubyte>.set(addr: Ushort, value: Ubyte) = this.set(addr.toInt(), value) //.also { println("intel8080.set memory ${addr.toInt().intel8080.hex(true)} to ${value.intel8080.hex()}")}.also { Exception().printStackTrace() }
 
-fun disassemble(emulator: Emulator8080, offset: Int) {
+fun disassemble(emulator: EmulatorLR35902, offset: Int) {
     var pc = offset.toUshort()
 
     do {
         val nextByte = emulator.state.memory[pc]
         val opCode = opCodeFor(nextByte.toUbyte())
-        opCode.consume(pc, emulator.state.memory)
+        opCode.consume(emulator.state)
         println(opCode.toString())
         pc += opCode.operandCount + 1
     } while(pc < emulator.state.memory.size)
 }
 
-class Emulator8080(val hardware: Hardware, val memSize: Int) {
+class EmulatorLR35902(val hardware: Hardware, val memSize: Int) {
 
     val EMULATOR_CYCLES_PER_SEC = 2000000
 
@@ -61,10 +61,10 @@ class Emulator8080(val hardware: Hardware, val memSize: Int) {
         state.pc = 0.toUshort()
         state.sp = 0.toUshort()
 
-        state.flags.s = false
+        state.flags.n = false
         state.flags.z = false
-        state.flags.cy = false
-        state.flags.p = false
+        state.flags.c = false
+        state.flags.h = false
 
         state.memory.fill(Ubyte(0))
 
@@ -120,12 +120,12 @@ class Emulator8080(val hardware: Hardware, val memSize: Int) {
         val nextInst = state.memory[state.pc]
 
         currentOp = opCodeFor(nextInst)
-        currentOp!!.consume(state.pc, state.memory)
+        currentOp!!.consume(state)
 
         if(debug >= 1) debug("Executing")
     }
 
-    fun execNextInstruction(): Int = currentOp!!.execAndAdvance(state)
+    fun execNextInstruction(): Int = currentOp!!.execAndAdvance()
 
     fun debug(action: String) {
         when(state.pc.toInt()) {
@@ -147,56 +147,40 @@ class Emulator8080(val hardware: Hardware, val memSize: Int) {
 }
 
 class Flags(val state: State) {
-    var z: Boolean = false
-    var s: Boolean = false
+    var z: Boolean = false  //zero
+    var n: Boolean = false  //subtraction
+    var c: Boolean = false //carry
+    var h: Boolean = false //half-carry
 
-    //we lazy evaluate this so it's only calculated when needed
-    //setFlags will just intel8080.set the 'lastFlaggedValue' variable so that we know the last number that parity should have been
-    //calculated for
-    var lastFlaggedValue: Ushort = Ushort(0)
-    var p: Boolean
-        get() {
-            var p = 0
-            var work = lastFlaggedValue.and(1.shl(8)-1)
-            for(i in (0..8)) {
-                if(work.and(0x1).toInt() == 0x1) p++
-                work = work.shr(1)
-            }
-            return (0 == (p.and(0x1)))
-        }
-        //Also need a setter so that intel8080.POP_PSW (sets flags from a value on the stack) can work.
-        set(value: Boolean) {
-            lastFlaggedValue = if(value) Ushort(0) else Ushort(1)
-        }
-    var cy: Boolean = false
-    var ac: Boolean = false
-
-    override fun toString(): String {
-        return "${ind(z, "z")}\t${ind(s,"s")}\t${ind(p,"p")}\t${ind(cy, "cy")}\t${ind(ac, "ac")}"
+    fun reset() {
+        z = false
+        n = false
+        c = false
+        h = false
     }
-
-    fun ind(value: Boolean, letter: String) = if(value) "($letter)" else " $letter "
 
     fun asByte(): Ubyte {
         var byte = Ubyte(0)
-        if(z) byte = byte.or(0x1)
-        if(s) byte = byte.or(0x2)
-        if(p) byte = byte.or(0x4)
-        if(cy) byte = byte.or(0x8)
-        if(ac) byte = byte.or(0x10)
+        if(z) byte = byte.or(0x80)
+        if(n) byte = byte.or(0x40)
+        if(h) byte = byte.or(0x20)
+        if(c) byte = byte.or(0x10)
         return byte
     }
 
     fun fromByte(flags: Ubyte) {
-        z = flags.and(0x1) != ZERO
-        s = flags.and(0x2) != ZERO
-        p = flags.and(0x4) != ZERO
-        cy = flags.and(0x8) != ZERO
-        ac = flags.and(0x10) != ZERO
+        z = flags.and(0x80) != ZERO
+        n = flags.and(0x40) != ZERO
+        h = flags.and(0x20) != ZERO
+        c = flags.and(0x10) != ZERO
     }
+
+    override fun toString() = "${ind(z, "z")}\t${ind(n,"n")}\t${ind(c, "c")}\t${ind(h, "h")}"
+    private fun ind(value: Boolean, letter: String) = if(value) "($letter)" else " $letter "
+
 }
 
-class State(val hardware: Hardware, memSize: Int) {
+open class State(val hardware: Hardware, memSize: Int) {
     var a: Ubyte = Ubyte(0)
     var b: Ubyte = Ubyte(0)
     var c: Ubyte = Ubyte(0)
@@ -250,3 +234,5 @@ class State(val hardware: Hardware, memSize: Int) {
         halted = true
     }
 }
+
+class NullState: State(NullHardware(), 0)

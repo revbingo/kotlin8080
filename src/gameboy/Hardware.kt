@@ -14,7 +14,7 @@ fun Int.kb() = this * 1024
 
 abstract class Hardware(val title: String, val fileWithOffset: Pair<String, Int>, val screenSize: Pair<Double, Double>, val memSize: Int): Application() {
 
-    val emulator: Emulator8080 = Emulator8080(this, memSize)
+    val emulator = EmulatorLR35902(this, memSize)
 
     val hooks = mutableMapOf<Ushort, (State) -> Unit>()
 
@@ -46,4 +46,8 @@ abstract class Hardware(val title: String, val fileWithOffset: Pair<String, Int>
         primaryStage.scene = createInterface()
         primaryStage.show()
     }
+}
+
+class NullHardware: Hardware("", "" to 0, 0.0 to 0.0, 0) {
+    override fun createInterface() = TODO("not implemented")
 }
