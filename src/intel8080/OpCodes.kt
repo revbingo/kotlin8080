@@ -329,13 +329,13 @@ abstract class OpCode(val opCode: Int, val operandCount: Int = 0, val noAdvance:
         return (0 == (p.and(0x1)))
     }
 
-    fun addA(lhs: Ubyte, rhs: Ubyte): Ubyte {
+    fun add(lhs: Ubyte, rhs: Ubyte): Ubyte {
         val result = lhs.toUshort() + rhs.toUshort()
         setFlags(result, lhs, rhs)
         return result.toUbyte()
     }
 
-    fun subA(lhs: Ubyte, rhs: Ubyte): Ubyte {
+    fun sub(lhs: Ubyte, rhs: Ubyte): Ubyte {
         val result = lhs.toUshort() - rhs.toUshort()
         setFlags(result, lhs, rhs)
         val resultByte = result.toUbyte()
@@ -831,15 +831,13 @@ class INX_B: NoArgOpCode(0x03) {
 }
 class INR_B: NoArgOpCode(0x04, flags = "SZAP-") {
     override fun execute(): Int {
-        state.b += 1
-        setFlags(state.b)
+        state.b = add(state.b, ONE)
         return 5
     }
 }
 class DCR_B: NoArgOpCode(0x05, flags = "SZAP-") {
     override fun execute(): Int {
-        state.b = state.b - 1
-        setFlags(state.b)
+        state.b = sub(state.b, ONE)
         return 5
     }
 }
@@ -886,15 +884,13 @@ class DCX_B: NoArgOpCode(0x0b) {
 }
 class INR_C: NoArgOpCode(0x0c, flags = "SZAP-") {
     override fun execute(): Int {
-        state.c += 1
-        setFlags(state.c)
+        state.c = add(state.c, ONE)
         return 5
     }
 }
 class DCR_C: NoArgOpCode(0x0d, flags = "SZAP-") {
     override fun execute(): Int {
-        state.c -= 1
-        setFlags(state.c)
+        state.c = sub(state.c, ONE)
         return 5
     }
 }
@@ -939,16 +935,14 @@ class INX_D: NoArgOpCode(0x13) {
 }
 class INR_D: NoArgOpCode(0x14, flags = "SZAP-"){
     override fun execute(): Int {
-        state.d += 1
-        setFlags(state.d)
+        state.d = add(state.d, ONE)
         return 5
     }
 }
 
 class DCR_D: NoArgOpCode(0x15, flags = "SZAP-") {
     override fun execute(): Int {
-        state.d -= 1
-        setFlags(state.d)
+        state.d = sub(state.d, ONE)
         return 5
     }
 }
@@ -991,15 +985,13 @@ class DCX_D: NoArgOpCode(0x1b) {
 }
 class INR_E: NoArgOpCode(0x1c, flags = "SZAP-") {
     override fun execute(): Int {
-        state.e += 1
-        setFlags(state.e)
+        state.e = add(state.e, ONE)
         return 5
     }
 }
 class DCR_E: NoArgOpCode(0x1d, flags = "SZAP-") {
     override fun execute(): Int {
-        state.e -= 1
-        setFlags(state.e)
+        state.e = sub(state.e, ONE)
         return 5
     }
 }
@@ -1043,14 +1035,13 @@ class INX_H: NoArgOpCode(0x23) {
 
 class INR_H: NoArgOpCode(0x24, flags = "SZAP-") {
     override fun execute(): Int {
-        state.h += 1
-        setFlags(state.h)
+        state.h = add(state.h, ONE)
         return 5
     }
 }
 class DCR_H: NoArgOpCode(0x25, flags = "SZAP-")  {
     override fun execute(): Int {
-        state.h -= 1
+        state.h = sub(state.h, ONE)
         setFlags(state.h)
         return 5
     }
@@ -1088,15 +1079,13 @@ class DCX_H: NoArgOpCode(0x2b) {
 }
 class INR_L: NoArgOpCode(0x2c, flags = "SZAP-") {
     override fun execute(): Int {
-        state.l += 1
-        setFlags(state.l)
+        state.l = add(state.l, ONE)
         return 5
     }
 }
 class DCR_L: NoArgOpCode(0x2d, flags = "SZAP-") {
     override fun execute(): Int {
-        state.l -= 1
-        setFlags(state.l)
+        state.l = sub(state.l, ONE)
         return 5
     }
 }
@@ -1179,15 +1168,13 @@ class DCX_SP: NoArgOpCode(0x3b) {
 }
 class INR_A: NoArgOpCode(0x3c, flags = "SZAP-") {
     override fun execute(): Int {
-        state.a += 1
-        setFlags(state.a)
+        state.a = add(state.a, ONE)
         return 5
     }
 }
 class DCR_A: NoArgOpCode(0x3d, flags = "SZAP-") {
     override fun execute(): Int {
-        state.a -= 1
-        setFlags(state.a)
+        state.a = sub(state.a, ONE)
         return 5
     }
 }
@@ -1591,7 +1578,7 @@ class MOV_A_A: NoArgOpCode(0x7f) {
 
 class ADI: ByteOpCode(0xc6, flags = "SZAPC") {
     override fun execute(): Int {
-        state.a = addA(state.a, value!!)
+        state.a = add(state.a, value!!)
         return 7
     }
 }
@@ -1599,14 +1586,14 @@ class ADI: ByteOpCode(0xc6, flags = "SZAPC") {
 class ACI: ByteOpCode(0xce, flags = "SZAPC") {
     override fun execute(): Int {
         val valAndCarry = value!! + if(state.flags.cy) ONE else ZERO
-        state.a = addA(state.a, valAndCarry)
+        state.a = add(state.a, valAndCarry)
         return 7
     }
 }
 
 class SUI: ByteOpCode(0xd6, flags = "SZAPC") {
     override fun execute(): Int {
-        state.a = subA(state.a, value!!)
+        state.a = sub(state.a, value!!)
         return 7
     }
 }
@@ -1614,7 +1601,7 @@ class SUI: ByteOpCode(0xd6, flags = "SZAPC") {
 class SBI: ByteOpCode(0xde, flags = "SZAPC") {
     override fun execute(): Int {
         val valAndCarry = value!! + if(state.flags.cy) 0x1 else 0x0
-        state.a = subA(state.a, valAndCarry)
+        state.a = sub(state.a, valAndCarry)
         return 7
     }
 }
@@ -1686,8 +1673,7 @@ class SPHL: NoArgOpCode(0xf9) {
 
 class CPI: ByteOpCode(0xfe, flags = "SZAPC") {
     override fun execute(): Int {
-        val result = state.a.toUshort() - value!!.toUshort()
-        setFlags(result)
+        sub(state.a, value!!)
         return 7
     }
 }
@@ -1720,11 +1706,11 @@ class IN: ByteOpCode(0xdb) {
 class DAA: NoArgOpCode(0x27, flags = "SZAPC") {
     override fun execute(): Int {
         if(state.a.and(0xf) > 9 || state.flags.ac) {
-            state.a = addA(state.a, Ubyte(0x6))
+            state.a = add(state.a, Ubyte(0x6))
         }
 
         if(state.a.and(0xf0).shr(4) > 9 || state.flags.cy) {
-            state.a = addA(state.a, Ubyte(0x60))
+            state.a = add(state.a, Ubyte(0x60))
         }
         return 4
     }
