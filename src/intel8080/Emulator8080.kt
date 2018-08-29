@@ -18,7 +18,7 @@ fun disassemble(emulator: Emulator8080, offset: Int) {
         val opCode = opCodeFor(nextByte.toUbyte())
         opCode.consume(emulator.state)
         println(opCode.toString())
-        pc += opCode.operandCount + 1
+        pc += opCode.size
     } while(pc < emulator.state.memory.size)
 }
 

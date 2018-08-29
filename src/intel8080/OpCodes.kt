@@ -267,11 +267,12 @@ class FlagSet(val flags: String) {
     val c = flags[4] == 'C'
 }
 
-abstract class OpCode(val opCode: Int, val operandCount: Int = 0, val noAdvance: Boolean = false, val flagStr: String = "-----") {
+abstract class OpCode(val opCode: Int, val size: Int = 0, val noAdvance: Boolean = false, val flagStr: String = "-----") {
 
     var offset: Ushort = Ushort(0)
     var state: State = NullState()
     val flags = FlagSet(flagStr)
+    val noAction: Boolean = false
 
     override fun toString(): String {
         return "${String.format("%04X", offset.toInt())}\t${this.represent()}"
@@ -289,7 +290,7 @@ abstract class OpCode(val opCode: Int, val operandCount: Int = 0, val noAdvance:
     fun execAndAdvance(): Int {
         val cycles = execute()
         if(!noAdvance) {
-            state.pc += this.operandCount + 1
+            state.pc += this.size
         }
         return cycles
     }
@@ -343,11 +344,11 @@ abstract class OpCode(val opCode: Int, val operandCount: Int = 0, val noAdvance:
     }
 }
 
-abstract class NoArgOpCode(opCode: Int, noAdvance: Boolean = false, flags: String = "-----"): OpCode(opCode, 0, noAdvance, flags) {
+abstract class NoArgOpCode(opCode: Int, noAdvance: Boolean = false, flags: String = "-----"): OpCode(opCode, 1, noAdvance, flags) {
     override fun represent(): String = this.javaClass.simpleName.replaceFirst("_", " ").replaceFirst("_", ",")
 }
 
-abstract class ByteOpCode(opCode: Int, noAdvance: Boolean = false, flags: String = "-----"): OpCode(opCode, 1, noAdvance, flags) {
+abstract class ByteOpCode(opCode: Int, noAdvance: Boolean = false, flags: String = "-----"): OpCode(opCode, 2, noAdvance, flags) {
     var value: Ubyte? = null
     override fun represent(): String = "${this.javaClass.simpleName.replaceFirst("_", "\t")}${if(this.javaClass.simpleName.contains("_")) "," else "\t"}#${value.hex()}"
 
@@ -356,7 +357,7 @@ abstract class ByteOpCode(opCode: Int, noAdvance: Boolean = false, flags: String
     }
 }
 
-abstract class WordOpCode(opCode: Int, noAdvance: Boolean = false, flags: String = "-----"): OpCode(opCode, 2, noAdvance, flags) {
+abstract class WordOpCode(opCode: Int, noAdvance: Boolean = false, flags: String = "-----"): OpCode(opCode, 3, noAdvance, flags) {
     var value: Ushort? = null
         get() = hi!!.toUshort().shl(8).or(lo!!.toUshort())
     var hi: Ubyte? = null
@@ -377,7 +378,7 @@ abstract class JumpOpCode(opCode: Int): WordOpCode(opCode, true) {
         if(condition) {
             state.pc = value!!
         } else {
-            state.pc += this.operandCount + 1
+            state.pc += this.size
         }
         return 10
     }
@@ -424,7 +425,7 @@ abstract class CallOpCode(opCode: Int): WordOpCode(opCode, true) {
             state.pc = value!!
             ACTION_CYCLES
         } else {
-            state.pc += this.operandCount + 1
+            state.pc += this.size
             NO_ACTION_CYCLES
         }
     }
@@ -467,7 +468,7 @@ abstract class ReturnOpCode(opCode:Int): NoArgOpCode(opCode, true) {
             state.pc = state.popStack()
             ACTION_CYCLES
         } else {
-            state.pc += this.operandCount + 1
+            state.pc += this.size
             NO_ACTION_CYCLES
         }
     }
