@@ -17,7 +17,13 @@ fun disassemble(emulator: Emulator8080, offset: Int) {
         val nextByte = emulator.state.memory[pc]
         val opCode = opCodeFor(nextByte.toUbyte())
         opCode.consume(emulator.state)
-        println(opCode.toString())
+        val opCodeStr = when(opCode) {
+            is NoArgOpCode -> opCode.javaClass.simpleName.replaceFirst("_", " ").replaceFirst("_", ",")
+            is ByteOpCode -> "${opCode.javaClass.simpleName.replaceFirst("_", "\t")}${if(opCode.javaClass.simpleName.contains("_")) "," else "\t"}#${opCode.value.hex()}"
+            is WordOpCode -> "${opCode.javaClass.simpleName.replaceFirst("_", "\t")}${if(opCode.javaClass.simpleName.contains("_")) "," else "\t"}#${opCode.value.hex(isWord = true)}"
+            else -> "Unknown"
+        }
+        println("${String.format("%04X", offset.toInt())}\t$opCodeStr")
         pc += opCode.size
     } while(pc < emulator.state.memory.size)
 }

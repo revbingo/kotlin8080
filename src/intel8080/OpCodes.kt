@@ -267,16 +267,12 @@ class FlagSet(val flags: String) {
     val c = flags[4] == 'C'
 }
 
-abstract class OpCode(val opCode: Int, val size: Int = 0, val cycles: Int, val noAdvance: Boolean = false, val flagStr: String = "-----") {
+abstract class OpCode(val opCode: Int, val size: Int = 0, val cycles: Int, val flagStr: String = "-----") {
 
     var offset: Ushort = Ushort(0)
     var state: State = NullState()
     val flags = FlagSet(flagStr)
-    var noAction: Boolean = false
-
-    override fun toString(): String {
-        return "${String.format("%04X", offset.toInt())}\t${this.represent()}"
-    }
+    var branchTaken: Boolean = false
 
     fun consume(state: State) {
         this.offset = state.pc
@@ -285,14 +281,16 @@ abstract class OpCode(val opCode: Int, val size: Int = 0, val cycles: Int, val n
     }
 
     open fun consumeInternal() {}
-    abstract fun represent(): String
 
     fun execAndAdvance(): Int {
+        branchTaken = false
         execute()
-        if(!noAdvance) {
+        if(!branchTaken) {
             state.pc += this.size
+            return cycles
+        } else {
+            return cycles + 6
         }
-        return if(noAction) cycles else (cycles + 6)
     }
 
     open fun execute() {
@@ -343,26 +341,21 @@ abstract class OpCode(val opCode: Int, val size: Int = 0, val cycles: Int, val n
     }
 }
 
-abstract class NoArgOpCode(opCode: Int, cycles: Int, noAdvance: Boolean = false, flags: String = "-----"): OpCode(opCode, 1, cycles, noAdvance, flags) {
-    override fun represent(): String = this.javaClass.simpleName.replaceFirst("_", " ").replaceFirst("_", ",")
-}
+abstract class NoArgOpCode(opCode: Int, cycles: Int, flags: String = "-----"): OpCode(opCode, 1, cycles, flags)
 
-abstract class ByteOpCode(opCode: Int, cycles: Int, noAdvance: Boolean = false, flags: String = "-----"): OpCode(opCode, 2, cycles, noAdvance, flags) {
+abstract class ByteOpCode(opCode: Int, cycles: Int, flags: String = "-----"): OpCode(opCode, 2, cycles, flags) {
     var value: Ubyte? = null
-    override fun represent(): String = "${this.javaClass.simpleName.replaceFirst("_", "\t")}${if(this.javaClass.simpleName.contains("_")) "," else "\t"}#${value.hex()}"
 
     override fun consumeInternal() {
         value = state.peek(+1)
     }
 }
 
-abstract class WordOpCode(opCode: Int, cycles: Int, noAdvance: Boolean = false, flags: String = "-----"): OpCode(opCode, 3, cycles, noAdvance, flags) {
+abstract class WordOpCode(opCode: Int, cycles: Int, flags: String = "-----"): OpCode(opCode, 3, cycles, flags) {
     var value: Ushort? = null
         get() = hi!!.toUshort().shl(8).or(lo!!.toUshort())
     var hi: Ubyte? = null
     var lo: Ubyte? = null
-
-    override fun represent(): String = "${this.javaClass.simpleName.replaceFirst("_", "\t")}${if(this.javaClass.simpleName.contains("_")) "," else "\t"}#${value.hex(isWord = true)}"
 
     override fun consumeInternal() {
         hi = state.peek(+2)
@@ -371,14 +364,12 @@ abstract class WordOpCode(opCode: Int, cycles: Int, noAdvance: Boolean = false, 
 }
 
 // *** JUMPS ***
-abstract class JumpOpCode(opCode: Int): WordOpCode(opCode, 10, true) {
+abstract class JumpOpCode(opCode: Int): WordOpCode(opCode, 10) {
 
     fun jumpIf(condition: Boolean) {
         if(condition) {
             state.pc = value!!
-        } else {
-            noAction = true
-            state.pc += this.size
+            branchTaken = true
         }
     }
 }
@@ -413,16 +404,14 @@ class JNZ: JumpOpCode(0xc2) {
 
 // **** CALLS
 
-abstract class CallOpCode(opCode: Int): WordOpCode(opCode, 11, true) {
+abstract class CallOpCode(opCode: Int): WordOpCode(opCode, 11) {
     fun callIf(condition: Boolean) {
-        return if(condition) {
+        if(condition) {
             state.pc += 3
             state.pushStack(state.pc)
 
             state.pc = value!!
-        } else {
-            noAction = true
-            state.pc += this.size
+            branchTaken = true
         }
     }
 }
@@ -455,13 +444,11 @@ class CALL: CallOpCode(0xcd) {
 }
 
 // *** RETURNS
-abstract class ReturnOpCode(opCode:Int): NoArgOpCode(opCode, 5, true) {
+abstract class ReturnOpCode(opCode:Int): NoArgOpCode(opCode, 5) {
     fun returnIf(condition: Boolean) {
-        return if(condition) {
+        if(condition) {
             state.pc = state.popStack()
-        } else {
-            noAction = true
-            state.pc += this.size
+            branchTaken = true
         }
     }
 }
@@ -1455,8 +1442,9 @@ class ANI: ByteOpCode(0xe6, 7, flags = "SZAPC") {
     }
 }
 
-class PCHL: NoArgOpCode(0xe9, 5, true) {
+class PCHL: NoArgOpCode(0xe9, 5) {
     override fun execute() {
+        branchTaken = true
         state.pc = state.hl()
     }
 }
