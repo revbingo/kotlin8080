@@ -339,8 +339,7 @@ abstract class OpCode(val opCode: Int, val size: Int = 0, val noAdvance: Boolean
     fun sub(lhs: Ubyte, rhs: Ubyte): Ubyte {
         val result = lhs.toUshort() - rhs.toUshort()
         setFlags(result, lhs, rhs)
-        val resultByte = result.toUbyte()
-        return resultByte
+        return result.toUbyte()
     }
 }
 

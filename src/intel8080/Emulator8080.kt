@@ -116,7 +116,7 @@ class Emulator8080(val hardware: Hardware, val memSize: Int) {
         interrupts.add { timer("Interrupt", period = period, action = action) }
     }
 
-    inline fun readNextInstruction() {
+    private fun readNextInstruction() {
         val nextInst = state.memory[state.pc]
 
         currentOp = opCodeFor(nextInst)
@@ -125,9 +125,9 @@ class Emulator8080(val hardware: Hardware, val memSize: Int) {
         if(debug >= 1) debug("Executing")
     }
 
-    fun execNextInstruction(): Int = currentOp!!.execAndAdvance()
+    private fun execNextInstruction(): Int = currentOp!!.execAndAdvance()
 
-    fun debug(action: String) {
+    private fun debug(action: String) {
         when(state.pc.toInt()) {
             0x01AB -> log.println("TEST JUMP INSTRUCTIONS")
             0x22A -> log.println("TEST ACCUMULATOR IMMEDIATE")
