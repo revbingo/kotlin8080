@@ -45,10 +45,13 @@ class Port {
     var value: Ubyte = ZERO
 }
 
+val base = "resources/intel8080/spaceinvaders/"
+
 class SpaceInvaders: Hardware(title = "Space Invaders!",
-                                fileWithOffset = "resources/invaders" at 0x0,
+                                fileWithOffset = "$base/invaders" at 0x0,
                                 screenSize = 224.0 by 256.0,
                                 memSize = 32.kb()) {
+
     private val externalShift = ExternalShift()
 
     private val screen: Canvas = Canvas(screenSize.first, screenSize.second)
@@ -179,7 +182,7 @@ class SpaceInvaders: Hardware(title = "Space Invaders!",
             )
 
     private val sounds = soundFileNames.mapValues { v ->
-        val ac = AudioClip(File("resources/sounds/${v.value}").toURI().toString())
+        val ac = AudioClip(File("$base/sounds/${v.value}").toURI().toString())
         if(v.value == "ufo_highpitch.wav") {
             ac.cycleCount = AudioClip.INDEFINITE
         }
