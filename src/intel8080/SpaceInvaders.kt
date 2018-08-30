@@ -245,7 +245,8 @@ class SpaceInvaders: Hardware(title = "Space Invaders!",
         )
 
         val otherFunctions = mapOf(
-                "v" to this::toggleColour
+                "v" to this::toggleColour,
+                "r" to this::reset
         )
 
         scene.setOnKeyPressed { e ->
