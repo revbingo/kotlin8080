@@ -28,17 +28,16 @@ fun disassemble(emulator: Emulator8080, offset: Int) {
     } while(pc < emulator.state.memory.size)
 }
 
-class Emulator8080(val hardware: Hardware, val memSize: Int) {
+class Emulator8080(val hardware: Hardware, memSize: Int) {
 
-    val EMULATOR_CYCLES_PER_SEC = 2000000
+    private val EMULATOR_CYCLES_PER_SEC = 2000000
+    private val nanosPerCycle = (1.0/EMULATOR_CYCLES_PER_SEC) * 1e9
 
-    val nanosPerCycle = (1/EMULATOR_CYCLES_PER_SEC) * 1e9
     val state = State(hardware, memSize)
 
     val debug: Int = 0
     private var log = File("debug.log").printWriter()
 
-    var currentOp: OpCode? = null
     var opCount = 0
 
     val interrupts = mutableListOf<() -> Timer>()
@@ -54,6 +53,7 @@ class Emulator8080(val hardware: Hardware, val memSize: Int) {
     fun reset() {
         runningInterrupts.forEach { t -> t.cancel() }
 
+        runningInterrupts.clear()
         interrupts.clear()
 
         state.a = Ubyte(0)
@@ -67,10 +67,7 @@ class Emulator8080(val hardware: Hardware, val memSize: Int) {
         state.pc = 0.toUshort()
         state.sp = 0.toUshort()
 
-        state.flags.s = false
-        state.flags.z = false
-        state.flags.cy = false
-        state.flags.p = false
+        state.flags.fromByte(ZERO)
 
         state.memory.fill(Ubyte(0))
 
@@ -97,10 +94,10 @@ class Emulator8080(val hardware: Hardware, val memSize: Int) {
                         state.int_enable = false
                     }
                     if(hardware.hooks.containsKey(state.pc)) hardware.hooks[state.pc]?.invoke(state)
-                    readNextInstruction()
-                    val processed = execNextInstruction()
-                    cyclesToProcess -= processed
-                    opCount += processed
+                    val nextOp = readNextInstruction()
+                    val cycles = nextOp.execAndAdvance()
+                    cyclesToProcess -= cycles
+                    opCount += cycles
                 } else {
                     val timeNow = System.nanoTime()
                     if(lastInstruction == 0L) lastInstruction = timeNow
@@ -122,26 +119,18 @@ class Emulator8080(val hardware: Hardware, val memSize: Int) {
         interrupts.add { timer("Interrupt", period = period, action = action) }
     }
 
-    private fun readNextInstruction() {
+    private fun readNextInstruction(): OpCode {
         val nextInst = state.memory[state.pc]
 
-        currentOp = opCodeFor(nextInst)
-        currentOp!!.consume(state)
+        val currentOp = opCodeFor(nextInst)
+        currentOp.consume(state)
 
-        if(debug >= 1) debug("Executing")
+        if(debug >= 1) debug("Executing", currentOp)
+
+        return currentOp
     }
 
-    private fun execNextInstruction(): Int = currentOp!!.execAndAdvance()
-
-    private fun debug(action: String) {
-        when(state.pc.toInt()) {
-            0x01AB -> log.println("TEST JUMP INSTRUCTIONS")
-            0x22A -> log.println("TEST ACCUMULATOR IMMEDIATE")
-            0x287 -> log.println("TEST CALLS AND RETURNS")
-            0x31D -> log.println("TEST \"MOV\",\"INR\",AND \"DCR\" INSTRUCTIONS")
-            0x35C -> log.println("TEST ARITHMETIC AND LOGIC INSTRUCTIONS")
-            else -> {}
-        }
+    private fun debug(action: String, currentOp: OpCode) {
         val statement = "Ops:${opCount} | intel8080.Flags: ${state.flags} | ${state} | $action ${currentOp}"
         print("\r" + statement)
         if(debug >= 2) log.println(statement)
@@ -171,17 +160,11 @@ class Flags(val state: State) {
             return (0 == (p.and(0x1)))
         }
         //Also need a setter so that intel8080.POP_PSW (sets flags from a value on the stack) can work.
-        set(value: Boolean) {
+        set(value) {
             lastFlaggedValue = if(value) Ushort(0) else Ushort(1)
         }
     var cy: Boolean = false
     var ac: Boolean = false
-
-    override fun toString(): String {
-        return "${ind(z, "z")}\t${ind(s,"s")}\t${ind(p,"p")}\t${ind(cy, "cy")}\t${ind(ac, "ac")}"
-    }
-
-    fun ind(value: Boolean, letter: String) = if(value) "($letter)" else " $letter "
 
     fun asByte(): Ubyte {
         var byte = Ubyte(0)
@@ -200,6 +183,13 @@ class Flags(val state: State) {
         cy = flags.and(0x8) != ZERO
         ac = flags.and(0x10) != ZERO
     }
+
+    override fun toString(): String {
+        return "${ind(z, "z")}\t${ind(s,"s")}\t${ind(p,"p")}\t${ind(cy, "cy")}\t${ind(ac, "ac")}"
+    }
+
+    private fun ind(value: Boolean, letter: String) = if(value) "($letter)" else " $letter "
+
 }
 
 open class State(val hardware: Hardware, memSize: Int) {
@@ -220,10 +210,6 @@ open class State(val hardware: Hardware, memSize: Int) {
 
     var int_enable: Boolean = false
     var halted: Boolean = false
-
-    override fun toString(): String {
-        return "a:${a.hex()}\tbc:${b.toWord(c).hex(true)}\tde:${d.toWord(e).hex(true)}\thl:${h.toWord(l).hex(true)}\t\tpc:${pc.hex(true)}\tsp:${sp.hex(true)}"
-    }
 
     fun hl() = h.toWord(l)
     fun de() = d.toWord(e)
@@ -256,6 +242,10 @@ open class State(val hardware: Hardware, memSize: Int) {
 
     fun halt() {
         halted = true
+    }
+
+    override fun toString(): String {
+        return "a:${a.hex()}\tbc:${b.toWord(c).hex(true)}\tde:${d.toWord(e).hex(true)}\thl:${h.toWord(l).hex(true)}\t\tpc:${pc.hex(true)}\tsp:${sp.hex(true)}"
     }
 }
 

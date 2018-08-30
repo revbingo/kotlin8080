@@ -256,7 +256,7 @@ val opCodes = mutableMapOf(0x00 to NOP(),
                                 0xfe to CPI(),
                                 0xff to RST_7())
 
-fun opCodeFor(opCode: Ubyte): OpCode = opCodes[opCode.toInt()]!!
+fun opCodeFor(opCode: Ubyte): OpCode = opCodes[opCode.toInt()] ?: throw RuntimeException("Unrecognised opcode ${opCode.toInt()}")
 
 class FlagSet(val flags: String) {
 
@@ -277,13 +277,13 @@ abstract class OpCode(val opCode: Int, val size: Int = 0, val cycles: Int, val f
     fun consume(state: State) {
         this.offset = state.pc
         this.state = state
+        this.branchTaken = false
         consumeInternal()
     }
 
     open fun consumeInternal() {}
 
     fun execAndAdvance(): Int {
-        branchTaken = false
         execute()
         if(!branchTaken) {
             state.pc += this.size
