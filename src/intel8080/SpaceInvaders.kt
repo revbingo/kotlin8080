@@ -56,6 +56,8 @@ class SpaceInvaders: Hardware(title = "Space Invaders!",
 
     private val screen: Canvas = Canvas(screenSize.first, screenSize.second)
 
+    private var colourEnabled = true
+
     private var nextInterrupt = 1
 
     //Actually 120Hz, there are 2 interrupts per 60Hz refresh
@@ -128,7 +130,12 @@ class SpaceInvaders: Hardware(title = "Space Invaders!",
                         val bt = b.shr(j).and(0x1)
                         if (bt == ONE) {
                             val y = (yBlock - j).toInt()
-                            pixelWriter.setColor(x, y, Color.WHITE)
+                            val color = when {
+                                colourEnabled && y in 33..64 -> Color.RED
+                                colourEnabled && (y in 184..240 || (y in 184..256 && x in 16..134)) -> Color.GREEN
+                                else -> Color.WHITE
+                            }
+                            pixelWriter.setColor(x, y, color)
                         }
 
                     }
@@ -211,6 +218,10 @@ class SpaceInvaders: Hardware(title = "Space Invaders!",
         }
     }
 
+    private fun toggleColour() {
+        colourEnabled = !colourEnabled
+    }
+
     private fun bindKeys(scene: Scene) {
         val keyPressBindings = mapOf(
                 "c" to insertCoin,
@@ -233,6 +244,10 @@ class SpaceInvaders: Hardware(title = "Space Invaders!",
                 "7" to dip7
         )
 
+        val otherFunctions = mapOf(
+                "v" to this::toggleColour
+        )
+
         scene.setOnKeyPressed { e ->
             if(keyPressBindings.containsKey(e.text)) {
                 val switch = keyPressBindings[e.text]!!
@@ -240,6 +255,9 @@ class SpaceInvaders: Hardware(title = "Space Invaders!",
             } else if(toggleBindings.containsKey(e.text)) {
                 val switch = toggleBindings[e.text]!!
                 switch.toggle()
+            } else if(otherFunctions.containsKey(e.text)) {
+                val f = otherFunctions[e.text]
+                f?.invoke()
             }
         }
         scene.setOnKeyReleased { e ->
