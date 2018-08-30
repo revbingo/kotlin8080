@@ -146,8 +146,8 @@ class SpaceInvaders: Hardware(title = "Space Invaders!",
 
     private fun reset() {
         emulator.state.halt()
-        emulator.reset()
         Thread.sleep(100)
+        emulator.reset()
         runEmulator()
     }
 

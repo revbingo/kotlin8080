@@ -79,12 +79,13 @@ class Emulator8080(val hardware: Hardware, memSize: Int) {
         //start the interrupts
         interrupts.mapTo(runningInterrupts) { t -> t() }
 
-        var lastInstruction: Long = 0
-        var cyclesToProcess: Long = 0
+        val PERIOD = 10L
 
         while(!state.halted) {
             try {
-                if(cyclesToProcess > 0) {
+                var cyclesToProcess = Math.round((PERIOD * 1000000)/(nanosPerCycle))
+                val start = System.nanoTime()
+                while(cyclesToProcess > 0) {
                     //If there's an interrupt waiting and they are enabled, process the interrupt
                     if (interrupt > 0 && state.int_enable) {
                         hardware.interrupt(interrupt)
@@ -93,18 +94,15 @@ class Emulator8080(val hardware: Hardware, memSize: Int) {
                         interrupt = 0
                         state.int_enable = false
                     }
-                    if(hardware.hooks.containsKey(state.pc)) hardware.hooks[state.pc]?.invoke(state)
+                    if (hardware.hooks.containsKey(state.pc)) hardware.hooks[state.pc]?.invoke(state)
                     val nextOp = readNextInstruction()
                     val cycles = nextOp.execAndAdvance()
                     cyclesToProcess -= cycles
                     opCount += cycles
-                } else {
-                    val timeNow = System.nanoTime()
-                    if(lastInstruction == 0L) lastInstruction = timeNow
-                    cyclesToProcess = Math.round((timeNow - lastInstruction)/nanosPerCycle)
-                    lastInstruction = timeNow
-                    Thread.sleep(10)
                 }
+                //How long should we sleep for?
+                val diffinMs = (System.nanoTime() - start)/1000000
+                Thread.sleep(Math.max(PERIOD - diffinMs, 0))
             } catch(e: Exception) {
                 e.printStackTrace(log)
                 e.printStackTrace()
