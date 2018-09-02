@@ -10,7 +10,7 @@ import unsigned.Ushort
 import unsigned.toUbyte
 import unsigned.toUshort
 
-class Diagnostic: Hardware(title = "intel8080.Diagnostic test",
+class Diagnostic: Hardware(title = "Diagnostic test",
                             fileWithOffset = "resources/cpudiag.bin" at 0x100,
                             screenSize = 400.0 by 256.0,
                             memSize = 2.kb()) {

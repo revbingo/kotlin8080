@@ -8,7 +8,7 @@ import kotlin.concurrent.timer
 
 fun Number?.hex(isWord: Boolean = false) = String.format("$%0${if(isWord) 4 else 2}X", this?.toInt()).toLowerCase()
 operator fun Array<Ubyte>.get(addr: Ushort) = this.get(addr.toInt()).toUbyte()
-operator fun Array<Ubyte>.set(addr: Ushort, value: Ubyte) = this.set(addr.toInt(), value) //.also { println("intel8080.set memory ${addr.toInt().intel8080.hex(true)} to ${value.intel8080.hex()}")}.also { Exception().printStackTrace() }
+operator fun Array<Ubyte>.set(addr: Ushort, value: Ubyte) = this.set(addr.toInt(), value)
 
 fun disassemble(emulator: Emulator8080, offset: Int) {
     var pc = offset.toUshort()
@@ -129,7 +129,7 @@ class Emulator8080(val hardware: Hardware, memSize: Int) {
     }
 
     private fun debug(action: String, currentOp: OpCode) {
-        val statement = "Ops:${opCount} | intel8080.Flags: ${state.flags} | ${state} | $action ${currentOp}"
+        val statement = "Ops:${opCount} | Flags: ${state.flags} | ${state} | $action ${currentOp}"
         print("\r" + statement)
         if(debug >= 2) log.println(statement)
     }
@@ -144,7 +144,7 @@ class Flags(val state: State) {
     var s: Boolean = false
 
     //we lazy evaluate this so it's only calculated when needed
-    //setFlags will just intel8080.set the 'lastFlaggedValue' variable so that we know the last number that parity should have been
+    //setFlags will just set the 'lastFlaggedValue' variable so that we know the last number that parity should have been
     //calculated for
     var lastFlaggedValue: Ushort = Ushort(0)
     var p: Boolean
@@ -157,7 +157,7 @@ class Flags(val state: State) {
             }
             return (0 == (p.and(0x1)))
         }
-        //Also need a setter so that intel8080.POP_PSW (sets flags from a value on the stack) can work.
+        //Also need a setter so that POP_PSW (sets flags from a value on the stack) can work.
         set(value) {
             lastFlaggedValue = if(value) Ushort(0) else Ushort(1)
         }
