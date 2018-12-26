@@ -2,7 +2,6 @@ package intel8080
 import unsigned.Ubyte
 import unsigned.Ushort
 import unsigned.toUshort
-import java.io.File
 import java.util.*
 import kotlin.concurrent.timer
 
@@ -34,9 +33,7 @@ class Emulator8080(val hardware: Hardware, memSize: Int) {
     private val nanosPerCycle = (1.0/EMULATOR_CYCLES_PER_SEC) * 1e9
 
     val state = State(hardware, memSize)
-
-    val debug: Int = 0
-    private var log = File("debug.log").printWriter()
+    val cpu = Cpu(state)
 
     var opCount = 0
 
@@ -95,8 +92,7 @@ class Emulator8080(val hardware: Hardware, memSize: Int) {
                         state.int_enable = false
                     }
                     if (hardware.hooks.containsKey(state.pc)) hardware.hooks[state.pc]?.invoke(state)
-                    val nextOp = readNextInstruction()
-                    val cycles = nextOp.execAndAdvance()
+                    val cycles = cpu.tick()
                     cyclesToProcess -= cycles
                     opCount += cycles
                 }
@@ -104,34 +100,14 @@ class Emulator8080(val hardware: Hardware, memSize: Int) {
                 val diffinMs = (System.nanoTime() - start)/1000000
                 Thread.sleep(Math.max(PERIOD - diffinMs, 0))
             } catch(e: Exception) {
-                e.printStackTrace(log)
                 e.printStackTrace()
                 break
             }
         }
-        log.flush()
-        log.close()
     }
 
     fun setInterrupt(period: Long, action: TimerTask.() -> Unit) {
         interrupts.add { timer("Interrupt", period = period, action = action) }
-    }
-
-    private fun readNextInstruction(): OpCode {
-        val nextInst = state.memory[state.pc]
-
-        val currentOp = opCodeFor(nextInst)
-        currentOp.consume(state)
-
-        if(debug >= 1) debug("Executing", currentOp)
-
-        return currentOp
-    }
-
-    private fun debug(action: String, currentOp: OpCode) {
-        val statement = "Ops:${opCount} | Flags: ${state.flags} | ${state} | $action ${currentOp}"
-        print("\r" + statement)
-        if(debug >= 2) log.println(statement)
     }
 
     fun interrupt(num: Int) {

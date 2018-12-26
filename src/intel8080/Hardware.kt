@@ -33,7 +33,7 @@ abstract class Hardware(val title: String, val fileWithOffset: Pair<String, Int>
         emulator.load(bytes, fileWithOffset.second)
 
         initEmulator()
-        if(emulator.debug >= 3) disassemble(emulator, 0x0)
+//        if(emulator.debug >= 3) disassemble(emulator, 0x0)
         thread { emulator.run() }
     }
 
